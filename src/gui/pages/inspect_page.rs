@@ -20,6 +20,7 @@ use crate::gui::styles::text::{TextStyleTuple, TextType};
 use crate::gui::styles::text_input::{TextInputStyleTuple, TextInputType};
 use crate::gui::types::message::Message;
 use crate::networking::types::search_parameters::{FilterInputType, SearchParameters};
+use crate::networking::types::trans_protocol::TransProtocol;
 use crate::report::get_report_entries::get_searched_entries;
 use crate::translations::translations::application_protocol_translation;
 use crate::translations::translations_2::{
@@ -29,6 +30,8 @@ use crate::translations::translations_2::{
 };
 use crate::utils::formatted_strings::{get_connection_color, get_open_report_tooltip};
 use crate::{Language, ReportSortType, RunningPage, Sniffer, StyleType};
+
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
 
 /// Computes the body of gui inspect page
 pub fn inspect_page(sniffer: &Sniffer) -> Container<Message> {
@@ -151,13 +154,39 @@ fn lazy_report(sniffer: &Sniffer) -> Row<'static, Message> {
     let start_entry_num = (sniffer.page_number - 1) * 20 + 1;
     let end_entry_num = start_entry_num + search_results.len() - 1;
     for (key, val, flag) in search_results {
+        let sockets_info = get_sockets_info(
+            AddressFamilyFlags::IPV6 | AddressFamilyFlags::IPV4,
+            match key.trans_protocol {
+                TransProtocol::TCP => ProtocolFlags::TCP,
+                TransProtocol::UDP => ProtocolFlags::UDP,
+                TransProtocol::Other => ProtocolFlags::TCP | ProtocolFlags::UDP,
+            },
+        )
+        .unwrap_or_default();
+        let socket_info = sockets_info.iter().find(|s| {
+            let socket_port = match &s.protocol_socket_info {
+                ProtocolSocketInfo::Tcp(tcp_si) => tcp_si.local_port,
+                ProtocolSocketInfo::Udp(udp_si) => udp_si.local_port,
+            };
+            socket_port == key.port1
+        });
+        let (uid, pids) = match socket_info {
+            Some(s) => (Some(s.uid), Some(s.associated_pids.clone())),
+            None => (None, None),
+        };
+        dbg!(uid, pids, key.port1);
         let entry_color = get_connection_color(val.traffic_direction, sniffer.style);
         let entry_row = Row::new()
             .align_items(Alignment::Center)
             .push(
-                Text::new(format!("  {}{}  ", key.print_gui(), val.print_gui()))
-                    .style(iced::theme::Text::Color(entry_color))
-                    .font(font),
+                Text::new(format!(
+                    "  {}{}                    ",
+                    key.print_gui(),
+                    val.print_gui()
+                    // TODO: add printing for UIDs and PIDs
+                ))
+                .style(iced::theme::Text::Color(entry_color))
+                .font(font),
             )
             .push(flag)
             .push(Text::new("  "));
@@ -171,7 +200,7 @@ fn lazy_report(sniffer: &Sniffer) -> Row<'static, Message> {
     }
     if results_number > 0 {
         col_report = col_report
-            .push(Text::new("      Src IP address       Src port      Dst IP address       Dst port  Layer4   Layer7     Packets     Bytes   Country").vertical_alignment(Vertical::Center).height(Length::FillPortion(2)).font(font))
+            .push(Text::new("      Src IP address       Src port      Dst IP address       Dst port  Layer4   Layer7     Packets     Bytes    pid     uid    Country").vertical_alignment(Vertical::Center).height(Length::FillPortion(2)).font(font))
             .push(Rule::horizontal(5).style(<RuleStyleTuple as Into<iced::theme::Rule>>::into(RuleStyleTuple(
                 sniffer.style,
                 RuleType::Standard,
@@ -226,7 +255,7 @@ fn lazy_report(sniffer: &Sniffer) -> Row<'static, Message> {
         .push(
             Container::new(col_report)
                 .padding([10, 7, 7, 7])
-                .width(Length::Fixed(1042.0))
+                .width(Length::Fixed(1242.0))
                 .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
                     ContainerStyleTuple(sniffer.style, ContainerType::BorderedRound),
                 )),

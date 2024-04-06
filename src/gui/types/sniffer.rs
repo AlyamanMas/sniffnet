@@ -46,6 +46,7 @@ pub struct Sniffer {
     pub newer_release_available: Arc<Mutex<Result<bool, String>>>,
     /// Traffic data displayed in GUI
     pub runtime_data: RunTimeData,
+    // TODO: add map or vector for UIDs and PIDs
     /// Network adapter to be analyzed
     pub device: MyDevice,
     /// Last network adapter name for which packets were observed; saved into config file

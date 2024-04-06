@@ -14,6 +14,8 @@ use crate::networking::types::host::Host;
 use crate::networking::types::info_address_port_pair::InfoAddressPortPair;
 use crate::{AppProtocol, ChartType, InfoTraffic, ReportSortType, Sniffer};
 
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+
 /// Returns the elements which satisfy the search constraints and belong to the given page,
 /// and the total number of elements which satisfy the search constraints
 pub fn get_searched_entries(
