@@ -134,13 +134,7 @@ impl Sniffer {
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::ToggleReportView => {
-                if self.report_view.eq(&ReportView::Detailed) {
-                    self.report_view = ReportView::Summarized;
-                } else {
-                    self.report_view = ReportView::Detailed;
-                }
-            }
+            Message::ReportViewSelection(view) => self.report_view = view,
             Message::TickRun => return self.refresh_data(),
             Message::AdapterSelection(name) => self.set_adapter(&name),
             Message::IpVersionSelection(version) => self.filters.ip = version,

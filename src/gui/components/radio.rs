@@ -15,6 +15,8 @@ use crate::translations::translations::{
 };
 use crate::{ChartType, IpVersion, Language, StyleType, TransProtocol};
 
+use super::types::report_view::ReportView;
+
 pub fn ip_version_radios(
     active: IpVersion,
     font: Font,
@@ -238,6 +240,33 @@ pub fn chart_radios(
                 option,
                 Some(active),
                 Message::ChartSelection,
+            )
+            .spacing(7)
+            .font(font)
+            .size(15)
+            .style(<RadioStyleTuple as Into<iced::theme::Radio>>::into(
+                RadioStyleTuple(style, RadioType::Standard),
+            )),
+        );
+    }
+    ret_val
+}
+
+// report view radios
+pub fn report_view_radios(
+    active: ReportView,
+    font: Font,
+    style: StyleType,
+    language: Language
+) -> Row<'static, Message> {
+    let mut ret_val = Row::new().spacing(10).align_items(Alignment::Center);
+    for option in ReportView::ALL {
+        ret_val = ret_val.push(
+            Radio::new(
+                option.get_radio_label(language),
+                option,
+                Some(active),
+                Message::ReportViewSelection,
             )
             .spacing(7)
             .font(font)
