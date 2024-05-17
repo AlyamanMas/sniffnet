@@ -11,6 +11,8 @@ use pcap::Device;
 
 use crate::chart::manage_chart_data::update_charts_data;
 use crate::gui::components::types::my_modal::MyModal;
+use crate::gui::components::types::report_view::ReportView;
+
 use crate::gui::pages::types::running_page::RunningPage;
 use crate::gui::pages::types::settings_page::SettingsPage;
 use crate::gui::styles::types::gradient_type::GradientType;
@@ -67,6 +69,8 @@ pub struct Sniffer {
     pub report_sort_type: ReportSortType,
     /// Currently displayed modal; None if no modal is displayed
     pub modal: Option<MyModal>,
+    /// Currently displayed report view(detailed or summarized)
+    pub report_view: ReportView,
     /// Currently displayed settings page; None if settings is closed
     pub settings_page: Option<SettingsPage>,
     /// Remembers the last opened setting page
@@ -113,6 +117,7 @@ impl Sniffer {
             waiting: ".".to_string(),
             traffic_chart: TrafficChart::new(config_settings.style, config_settings.language),
             report_sort_type: ReportSortType::MostRecent,
+            report_view: ReportView::Detailed,
             modal: None,
             settings_page: None,
             last_opened_setting: SettingsPage::Notifications,
@@ -129,6 +134,13 @@ impl Sniffer {
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
+            Message::ToggleReportView => {
+                if self.report_view.eq(&ReportView::Detailed) {
+                    self.report_view = ReportView::Summarized;
+                } else {
+                    self.report_view = ReportView::Detailed;
+                }
+            }
             Message::TickRun => return self.refresh_data(),
             Message::AdapterSelection(name) => self.set_adapter(&name),
             Message::IpVersionSelection(version) => self.filters.ip = version,

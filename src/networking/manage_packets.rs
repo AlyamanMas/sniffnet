@@ -447,7 +447,7 @@ pub fn is_my_address(address_to_lookup: &String, my_interface_addresses: &Vec<Ad
 pub fn get_capture_result(device: &MyDevice) -> (Option<String>, Option<Capture<Active>>) {
     let cap_result = Capture::from_device(&*device.name)
         .expect("Capture initialization error\n\r")
-        .promisc(true)
+        .promisc(false)
         .snaplen(256) //limit stored packets slice dimension (to keep more in the buffer)
         .immediate_mode(true) //parse packets ASAP!
         .open();
