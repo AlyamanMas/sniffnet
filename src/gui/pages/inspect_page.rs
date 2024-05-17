@@ -5,10 +5,15 @@ use iced::widget::{button, horizontal_space, vertical_space, Rule};
 use iced::widget::{
     lazy, Button, Checkbox, Column, Container, PickList, Row, Scrollable, Text, TextInput, Tooltip,
 };
-use iced::{alignment, Alignment, Font, Length};
+// import Radio
+use iced::widget::Radio;
+use iced::widget::radio::Appearance;
+// use crate::gui::components::custom_radio::CustomRadio;
+use iced::{alignment, Alignment, Font, Length, Renderer};
 
 use std::collections::HashMap;
 
+use crate::gui::components::radio::report_view_radios;
 use crate::gui::components::tab::get_pages_tabs;
 use crate::gui::components::types::my_modal::MyModal;
 use crate::gui::components::types::report_view::ReportView;
@@ -16,6 +21,7 @@ use crate::gui::styles::button::{ButtonStyleTuple, ButtonType};
 use crate::gui::styles::checkbox::{CheckboxStyleTuple, CheckboxType};
 use crate::gui::styles::container::{ContainerStyleTuple, ContainerType};
 use crate::gui::styles::picklist::{PicklistStyleTuple, PicklistType};
+use crate::gui::styles::radio::{self, RadioStyleTuple};
 use crate::gui::styles::rule::{RuleStyleTuple, RuleType};
 use crate::gui::styles::scrollbar::{ScrollbarStyleTuple, ScrollbarType};
 use crate::gui::styles::style_constants::{get_font, FONT_SIZE_TITLE, ICONS};
@@ -103,17 +109,13 @@ pub fn inspect_page(sniffer: &Sniffer) -> Container<Message> {
             sniffer.report_view),
     );
 
-    let toggle_button = Button::new(
-        Text::new(match sniffer.report_view {
-            ReportView::Detailed => "Switch to Summarized View",
-            ReportView::Summarized => "Switch to Detailed View",
-        })
-        .font(font),
-    )
-    .on_press(Message::ToggleReportView)
-    .padding(5);
-    // check if toggle button is pressed
-    // there is no sniffer.message
+    // use radio buttons defined in radio module
+    let views_radio_buttons = report_view_radios(
+        sniffer.report_view,
+        font,
+        sniffer.style,
+        sniffer.language
+    );
 
 
     // dbg!(sn);
@@ -151,7 +153,7 @@ pub fn inspect_page(sniffer: &Sniffer) -> Container<Message> {
                 ContainerStyleTuple(sniffer.style, ContainerType::BorderedRound),
             )),
         )
-        .push(toggle_button) // Add the toggle button here
+        .push(views_radio_buttons)
         .push(report);
 
     Container::new(Column::new().push(tab_and_body.push(body)))
@@ -171,43 +173,21 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         .width(Length::Fill)
         .align_items(Alignment::Center);
 
-
     match report_view {
         ReportView::Detailed => {
             let mut scroll_report = Column::new();
             let start_entry_num = (sniffer.page_number - 1) * 20 + 1;
             let end_entry_num = start_entry_num + search_results.len() - 1;
-            for (key, val, flag) in search_results {
-                let sockets_info = get_sockets_info(
-                    AddressFamilyFlags::IPV6 | AddressFamilyFlags::IPV4,
-                    match key.trans_protocol {
-                        TransProtocol::TCP => ProtocolFlags::TCP,
-                        TransProtocol::UDP => ProtocolFlags::UDP,
-                        TransProtocol::Other => ProtocolFlags::TCP | ProtocolFlags::UDP,
-                    },
-                )
-                .unwrap_or_default();
-                let socket_info = sockets_info.iter().find(|s| {
-                    let socket_port = match &s.protocol_socket_info {
-                        ProtocolSocketInfo::Tcp(tcp_si) => tcp_si.local_port,
-                        ProtocolSocketInfo::Udp(udp_si) => udp_si.local_port,
-                    };
-                    socket_port == key.port1
-                });
-                let (uid, pids) = match socket_info {
-                    Some(s) => (Some(s.uid), Some(s.associated_pids.clone())),
-                    None => (None, None),
-                };
-
+            for (key, val, flag, pid, uid) in search_results {
                 let entry_color = get_connection_color(val.traffic_direction, sniffer.style);
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
                         Text::new(format!(
-                            "            {}{}   {}    {}  ",
+                            "            {}{}     {}    {}  ",
                             key.print_gui(),
                             val.print_gui(),
-                            pids.as_ref().map_or("N/A".to_string(), |p| format!("{:?}", p)),
+                            pid.map_or("N/A".to_string(), |p| p.to_string()),
                             uid.map_or("N/A".to_string(), |u| u.to_string()),
                         ))
                         .style(iced::theme::Text::Color(entry_color))
@@ -270,54 +250,35 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 );
             }
         }
-        ReportView::Summarized => {
+        ReportView::Process => {
             // Aggregate data by PID
             let mut pid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
-            for (key, val, _) in &search_results {
-                let sockets_info = get_sockets_info(
-                    AddressFamilyFlags::IPV6 | AddressFamilyFlags::IPV4,
-                    match key.trans_protocol {
-                        TransProtocol::TCP => ProtocolFlags::TCP,
-                        TransProtocol::UDP => ProtocolFlags::UDP,
-                        TransProtocol::Other => ProtocolFlags::TCP | ProtocolFlags::UDP,
-                    },
-                )
-                .unwrap_or_default();
-                let socket_info = sockets_info.iter().find(|s| {
-                    let socket_port = match &s.protocol_socket_info {
-                        ProtocolSocketInfo::Tcp(tcp_si) => tcp_si.local_port,
-                        ProtocolSocketInfo::Udp(udp_si) => udp_si.local_port,
-                    };
-                    socket_port == key.port1
-                });
-
-                if let Some(s) = socket_info {
-                    // Loop over all pids and add the traffic to the pid_stats
-                    for pid in &s.associated_pids {
-                        let (total_bytes, total_packets) = pid_stats
-                            .entry(*pid)
-                            .or_insert((0, 0));
-                        *total_bytes += val.transmitted_bytes;
-                        *total_packets += val.transmitted_packets;
-                    }
+            for (key, val, _, pid, _) in &search_results {
+                if let Some(pid) = pid {
+                    let (total_bytes, total_packets) = pid_stats
+                        .entry(*pid)
+                        .or_insert((0, 0));
+                    *total_bytes += val.transmitted_bytes;
+                    *total_packets += val.transmitted_packets;
                 }
             }
 
             let mut scroll_report = Column::new();
             for (pid, (total_bytes, total_packets)) in &pid_stats {
                 let entry_row = Row::new()
-                    .align_items(Alignment::End)
+                    .align_items(Alignment::Center)
                     .push(
-                        Text::new(format!("{:53}{}", " ", pid))
+                        Text::new(format!("{:53} {:<10}    ", " ", pid))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
-                            .horizontal_alignment(Horizontal::Center)
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:5}{:10}{:10}{:<12}", " ", total_bytes, " ", total_packets))
+                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
-                            .horizontal_alignment(Horizontal::Center)
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
+                            .width(Length::Fill),
                     );
 
                 scroll_report = scroll_report.push(entry_row);
@@ -377,6 +338,180 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 );
             }
         }
+        ReportView::Port => {
+            // Aggregate data by port
+            let mut port_stats: HashMap<u16, (u128, u128)> = HashMap::new();
+            for (key, val, _, _, _) in &search_results {
+                let (total_bytes, total_packets) = port_stats
+                    .entry(key.port1)
+                    .or_insert((0, 0));
+                *total_bytes += val.transmitted_bytes;
+                *total_packets += val.transmitted_packets;
+            }
+
+            let mut scroll_report = Column::new();
+            for (port, (total_bytes, total_packets)) in &port_stats {
+                let entry_row = Row::new()
+                    .align_items(Alignment::Center)
+                    .push(
+                        Text::new(format!("{:53} {:<10}    ", " ", port))
+                            .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
+                            .font(font) // Use a fixed-width font
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
+                    )
+                    .push(
+                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
+                            .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
+                            .font(font) // Use a fixed-width font
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
+                            .width(Length::Fill),
+                    );
+
+                scroll_report = scroll_report.push(entry_row);
+            }
+
+            if !port_stats.is_empty() {
+                col_report = col_report
+                    .push(Text::new("  Port       Total Bytes       Total Packets")
+                        .vertical_alignment(Vertical::Center)
+                        .horizontal_alignment(Horizontal::Center)
+                        .height(Length::FillPortion(2))
+                        .font(font) // Use a fixed-width font
+                        .width(Length::Fill))
+                    .push(Rule::horizontal(5).style(<RuleStyleTuple as Into<iced::theme::Rule>>::into(RuleStyleTuple(
+                        sniffer.style,
+                        RuleType::Standard,
+                    ))))
+                    .push(
+                        Scrollable::new(scroll_report)
+                            .height(Length::FillPortion(15))
+                            .width(Length::Fill)
+                            .direction(Direction::Both {
+                                vertical: ScrollbarType::properties(),
+                                horizontal: ScrollbarType::properties(),
+                            })
+                            .style(
+                                <ScrollbarStyleTuple as Into<iced::theme::Scrollable>>::into(
+                                    ScrollbarStyleTuple(sniffer.style, ScrollbarType::Standard),
+                                ),
+                            ),
+                    )
+                    .push(
+                        Rule::horizontal(5).style(<RuleStyleTuple as Into<iced::theme::Rule>>::into(
+                            RuleStyleTuple(sniffer.style, RuleType::Standard),
+                        )),
+                    )
+                    .push(get_change_page_row(
+                        sniffer.style,
+                        sniffer.language,
+                        sniffer.page_number,
+                        1,  // Update start entry num
+                        port_stats.len(),  // Update end entry num
+                        port_stats.len(),
+                    ));
+            } else {
+                col_report = col_report.push(
+                    Column::new()
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(20)
+                        .align_items(Alignment::Center)
+                        .push(vertical_space(Length::FillPortion(1)))
+                        .push(Text::new('V'.to_string()).font(ICONS).size(60))
+                        .push(vertical_space(Length::Fixed(15.0)))
+                        .push(Text::new(no_search_results_translation(sniffer.language)).font(font))
+                        .push(vertical_space(Length::FillPortion(2))),
+                );
+            }
+        }
+        ReportView::User => {
+            // Aggregate data by UID
+            let mut uid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
+            for (_, val, _, _, uid) in &search_results {
+                if let Some(uid) = uid {
+                    let (total_bytes, total_packets) = uid_stats
+                        .entry(*uid)
+                        .or_insert((0, 0));
+                    *total_bytes += val.transmitted_bytes;
+                    *total_packets += val.transmitted_packets;
+                }
+            }
+
+            let mut scroll_report = Column::new();
+            for (uid, (total_bytes, total_packets)) in &uid_stats {
+                let entry_row = Row::new()
+                    .align_items(Alignment::Center)
+                    .push(
+                        Text::new(format!("{:53} {:<10}    ", " ", uid))
+                            .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
+                            .font(font) // Use a fixed-width font
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
+                    )
+                    .push(
+                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
+                            .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
+                            .font(font) // Use a fixed-width font
+                            .horizontal_alignment(iced::alignment::Horizontal::Left)
+                            .width(Length::Fill),
+                    );
+
+                scroll_report = scroll_report.push(entry_row);
+            }
+
+            if !uid_stats.is_empty() {
+                col_report = col_report
+                    .push(Text::new("  UID       Total Bytes       Total Packets")
+                        .vertical_alignment(Vertical::Center)
+                        .horizontal_alignment(Horizontal::Center)
+                        .height(Length::FillPortion(2))
+                        .font(font) // Use a fixed-width font
+                        .width(Length::Fill))
+                    .push(Rule::horizontal(5).style(<RuleStyleTuple as Into<iced::theme::Rule>>::into(RuleStyleTuple(
+                        sniffer.style,
+                        RuleType::Standard,
+                    ))))
+                    .push(
+                        Scrollable::new(scroll_report)
+                            .height(Length::FillPortion(15))
+                            .width(Length::Fill)
+                            .direction(Direction::Both {
+                                vertical: ScrollbarType::properties(),
+                                horizontal: ScrollbarType::properties(),
+                            })
+                            .style(
+                                <ScrollbarStyleTuple as Into<iced::theme::Scrollable>>::into(
+                                    ScrollbarStyleTuple(sniffer.style, ScrollbarType::Standard),
+                                ),
+                            ),
+                    )
+                    .push(
+                        Rule::horizontal(5).style(<RuleStyleTuple as Into<iced::theme::Rule>>::into(
+                            RuleStyleTuple(sniffer.style, RuleType::Standard),
+                        )),
+                    )
+                    .push(get_change_page_row(
+                        sniffer.style,
+                        sniffer.language,
+                        sniffer.page_number,
+                        1,  // Update start entry num
+                        uid_stats.len(),  // Update end entry num
+                        uid_stats.len(),
+                    ));
+            } else {
+                col_report = col_report.push(
+                    Column::new()
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(20)
+                        .align_items(Alignment::Center)
+                        .push(vertical_space(Length::FillPortion(1)))
+                        .push(Text::new('V'.to_string()).font(ICONS).size(60))
+                        .push(vertical_space(Length::Fixed(15.0)))
+                        .push(Text::new(no_search_results_translation(sniffer.language)).font(font))
+                        .push(vertical_space(Length::FillPortion(2))),
+                );
+            }
+        }
     }
 
     Row::new()
@@ -401,6 +536,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
             .width(Length::FillPortion(1)),
         )
 }
+
 
 
 // Function to handle the button message

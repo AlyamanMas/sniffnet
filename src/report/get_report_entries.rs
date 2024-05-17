@@ -8,6 +8,7 @@ use crate::countries::flags_pictures::FLAGS_WIDTH_SMALL;
 use crate::gui::types::message::Message;
 use crate::networking::manage_packets::get_address_to_lookup;
 use crate::networking::types::address_port_pair::AddressPortPair;
+use crate::networking::types::trans_protocol::TransProtocol;
 use crate::networking::types::data_info::DataInfo;
 use crate::networking::types::data_info_host::DataInfoHost;
 use crate::networking::types::host::Host;
@@ -18,6 +19,7 @@ use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSock
 
 /// Returns the elements which satisfy the search constraints and belong to the given page,
 /// and the total number of elements which satisfy the search constraints
+
 pub fn get_searched_entries(
     sniffer: &Sniffer,
 ) -> (
@@ -25,6 +27,8 @@ pub fn get_searched_entries(
         AddressPortPair,
         InfoAddressPortPair,
         Tooltip<'static, Message>,
+        Option<u32>, // PID
+        Option<u32>, // UID
     )>,
     usize,
 ) {
@@ -125,12 +129,43 @@ pub fn get_searched_entries(
                     sniffer.language,
                     sniffer.style,
                 );
-                (key_val.0.clone(), key_val.1.clone(), flag)
+
+                // Fetch PID and UID information
+                let sockets_info = get_sockets_info(
+                    AddressFamilyFlags::IPV6 | AddressFamilyFlags::IPV4,
+                    match key_val.0.trans_protocol {
+                        TransProtocol::TCP => ProtocolFlags::TCP,
+                        TransProtocol::UDP => ProtocolFlags::UDP,
+                        TransProtocol::Other => ProtocolFlags::TCP | ProtocolFlags::UDP,
+                    },
+                )
+                .unwrap_or_default();
+                let socket_info = sockets_info.iter().find(|s| {
+                    let socket_port = match &s.protocol_socket_info {
+                        ProtocolSocketInfo::Tcp(tcp_si) => tcp_si.local_port,
+                        ProtocolSocketInfo::Udp(udp_si) => udp_si.local_port,
+                    };
+                    socket_port == key_val.0.port1
+                });
+                let (uid, pids) = match socket_info {
+                    Some(s) => (Some(s.uid), Some(s.associated_pids.clone())),
+                    None => (None, None),
+                };
+                let pid = pids.and_then(|p| p.get(0).cloned()); // Take the first PID if available
+
+                (
+                    key_val.0.clone(),
+                    key_val.1.clone(),
+                    flag,
+                    pid,
+                    uid,
+                )
             })
             .collect(),
         all_results.len(),
     )
 }
+
 
 pub fn get_host_entries(
     info_traffic: &Arc<Mutex<InfoTraffic>>,
