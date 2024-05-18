@@ -5,9 +5,17 @@ use std::{
     process::{Child, Command},
 };
 
+#[derive(Hash, Eq, PartialEq, PartialOrd, Ord)]
+pub enum ThrottlingTarget {
+    Pid(u32),
+    PortEgress(u16),
+    PortIngress(u16),
+    Interface,
+}
+
 pub struct TrafficControl {
-    classid_counter: u16,
-    process_to_control_groups: HashMap<u32, u16>,
+    identifier_counter: u16,
+    identifiers_table: HashMap<ThrottlingTarget, u16>,
     interface: String,
 }
 
@@ -19,7 +27,10 @@ impl TrafficControl {
         let _ = Command::new("tc")
             .args(["qdisc", "del", "dev", &interface, "root"])
             .output();
-        // .expect(&("root qdisc couldn't be freed for the interface".to_string() + &interface));
+        // Clean the ingress qdisc
+        let _ = Command::new("tc")
+            .args(["qdisc", "del", "dev", &interface, "ingress"])
+            .output();
 
         // Create the root qdisc.
         if Command::new("tc")
@@ -32,6 +43,18 @@ impl TrafficControl {
             eprintln!("Couldn't make new root qdisc for interface {}", &interface);
         }
 
+        // Create the ingress qdisc
+        if Command::new("tc")
+            .args(["qdisc", "add", "dev", &interface, "ingress"])
+            .output()
+            .is_err()
+        {
+            eprintln!(
+                "Couldn't make new ingress qdisc for interface {}",
+                &interface
+            );
+        }
+
         // Create the filter that redirects cgroup packets to corresponding classes
         let _ = Command::new("tc")
             .args([
@@ -40,24 +63,211 @@ impl TrafficControl {
             .output();
 
         Self {
-            process_to_control_groups: HashMap::new(),
+            identifiers_table: HashMap::new(),
             interface,
-            classid_counter: 1,
+            identifier_counter: 1,
         }
     }
 
     /// Returns true if the connection is throttled, false otherwise
     pub fn pid_is_throttled(&self, pid: u32) -> bool {
-        self.process_to_control_groups.get(&pid).is_some()
+        self.identifiers_table
+            .get(&ThrottlingTarget::Pid(pid))
+            .is_some()
+    }
+
+    /// TODO: More testing needed
+    ///
+    /// Returns true if the port is throttled, false otherwise
+    pub fn port_is_throttled(&self, port: u16) -> bool {
+        self.identifiers_table
+            .get(&ThrottlingTarget::PortEgress(port))
+            .is_some()
+            && self
+                .identifiers_table
+                .get(&ThrottlingTarget::PortIngress(port))
+                .is_some()
+    }
+
+    /// TODO: More testing needed
+    ///
+    /// If the burst is not specified, the default of 256k is used
+    pub fn throttle_port(
+        &mut self,
+        port: u16,
+        kilobytes_per_second: usize,
+        burst_in_kilobytes: Option<usize>,
+    ) -> io::Result<()> {
+        // Get prios for ingress and egress filters. prio will be used as a kind of ID to delete
+        // the filters when we need to unthrottle/rethrottle
+        let egress_port_prio = self
+            .identifiers_table
+            .get(&ThrottlingTarget::PortEgress(port))
+            .unwrap_or(&self.identifier_counter)
+            .to_owned();
+        let ingress_port_prio = self
+            .identifiers_table
+            .get(&ThrottlingTarget::PortIngress(port))
+            .unwrap_or(&(&self.identifier_counter + 1))
+            .to_owned();
+
+        // Remove any old filter that throttles port on egress
+        let _ = Command::new("tc")
+            .args([
+                "filter",
+                "del",
+                "dev",
+                &self.interface,
+                "prio",
+                &egress_port_prio.to_string(),
+            ])
+            .output();
+
+        // Create the filter to throttle the port on egress
+        Command::new("tc")
+            .args([
+                "filter",
+                "add",
+                "dev",
+                &self.interface,
+                "parent",
+                "1:",
+                "protocol",
+                "ip",
+                "prio",
+                &egress_port_prio.to_string(),
+                "basic",
+                "match",
+                "'cmp(u16",
+                "at",
+                "0",
+                "layer",
+                "transport",
+                "eq",
+                &format!("{})'", port),
+                "action",
+                "police",
+                "rate",
+                &format!("{}kbps", kilobytes_per_second),
+                "burst",
+                &format!("{}k", burst_in_kilobytes.unwrap_or(256)),
+            ])
+            .output()?;
+
+        // Remove any old filter that throttles port on ingress
+        let _ = Command::new("tc")
+            .args([
+                "filter",
+                "del",
+                "dev",
+                &self.interface,
+                "prio",
+                &ingress_port_prio.to_string(),
+            ])
+            .output();
+
+        // Create the filter to throttle the port on ingress
+        Command::new("tc")
+            .args([
+                "filter",
+                "add",
+                "dev",
+                &self.interface,
+                "ingress",
+                "protocol",
+                "ip",
+                "prio",
+                &egress_port_prio.to_string(),
+                "basic",
+                "match",
+                "'cmp(u16",
+                "at",
+                "2",
+                "layer",
+                "transport",
+                "eq",
+                &format!("{})'", port),
+                "action",
+                "police",
+                "rate",
+                &format!("{}kbps", kilobytes_per_second),
+                "burst",
+                &format!("{}k", burst_in_kilobytes.unwrap_or(256)),
+            ])
+            .output()?;
+
+        // If everything successful, push to `process_to_control_groups`
+        self.identifiers_table
+            .insert(ThrottlingTarget::PortEgress(port), egress_port_prio);
+        self.identifiers_table
+            .insert(ThrottlingTarget::PortIngress(port), ingress_port_prio);
+
+        // If we used a new identifier (used the counter), then increment the counter
+        if egress_port_prio == self.identifier_counter {
+            self.identifier_counter += 1;
+        }
+        if ingress_port_prio == self.identifier_counter {
+            self.identifier_counter += 1;
+        }
+
+        Ok(())
+    }
+
+    /// TODO: More testing needed
+    ///
+    /// Unthrottles a port
+    pub fn unthrottle_port(&mut self, port: u16) -> io::Result<()> {
+        // Remove the filters that are being used to throttle the port
+        // Get prios for ingress and egress filters. prio will be used as a kind of ID to delete
+        // the filters when we need to unthrottle/rethrottle
+        if self.port_is_throttled(port) {
+            let egress_port_prio = self
+                .identifiers_table
+                .get(&ThrottlingTarget::PortEgress(port))
+                .unwrap()
+                .to_owned();
+            let ingress_port_prio = self
+                .identifiers_table
+                .get(&ThrottlingTarget::PortIngress(port))
+                .unwrap()
+                .to_owned();
+
+            // Remove any old filter that throttles port on egress
+            Command::new("tc")
+                .args([
+                    "filter",
+                    "del",
+                    "dev",
+                    &self.interface,
+                    "prio",
+                    &egress_port_prio.to_string(),
+                ])
+                .output()?;
+
+            // Remove any old filter that throttles port on ingress
+            Command::new("tc")
+                .args([
+                    "filter",
+                    "del",
+                    "dev",
+                    &self.interface,
+                    "prio",
+                    &ingress_port_prio.to_string(),
+                ])
+                .output()?;
+        }
+
+        Ok(())
     }
 
     /// This is based on the information obtained from here:
     /// https://unix.stackexchange.com/questions/328308/how-can-i-limit-download-bandwidth-of-an-existing-process-iptables-tc
+    /// NOTE: This only throttles on egress, as throttling on ingress by PID proved to be very hard
     pub fn throttle_pid(&mut self, pid: u32, kilobytes_per_second: usize) -> io::Result<()> {
         let pid_classid = self
-            .process_to_control_groups
-            .get(&pid)
-            .unwrap_or(&self.classid_counter)
+            .identifiers_table
+            .get(&ThrottlingTarget::Pid(pid))
+            .unwrap_or(&self.identifier_counter)
             .to_owned();
 
         if !self.pid_is_throttled(pid) {
@@ -121,26 +331,25 @@ impl TrafficControl {
             .output()?;
 
         // If everything successful, push to `process_to_control_groups`
-        self.process_to_control_groups.insert(pid, pid_classid);
+        self.identifiers_table
+            .insert(ThrottlingTarget::Pid(pid), pid_classid);
 
         // If we used a new classid (used the counter), then increment the counter
-        if pid_classid == self.classid_counter {
-            self.classid_counter += 1;
+        if pid_classid == self.identifier_counter {
+            self.identifier_counter += 1;
         }
 
         Ok(())
     }
 
-    pub fn unthrottle(&mut self, pid: u32) -> io::Result<()> {
+    pub fn unthrottle_pid(&mut self, pid: u32) -> io::Result<()> {
         // TODO: also remove pid from cgroup
         // For now, just removing the tc class will suffice, since that is what is being used to
         // set the actual throttling
 
-        // Remove the class of the pid if it exists, and don't do anything otherwise. This is
-        // useful when we are rethrottling a pid, since in that case the class already exists and
-        // we need to remove it first in order to change the throttling speed
+        // Remove the class of the pid if it exists
         if self.pid_is_throttled(pid) {
-            let _ = Command::new("tc")
+            Command::new("tc")
                 .args([
                     "class",
                     "del",
@@ -149,12 +358,12 @@ impl TrafficControl {
                     "classid",
                     &format!(
                         "1:{}",
-                        self.process_to_control_groups
-                            .remove(&pid)
+                        self.identifiers_table
+                            .remove(&ThrottlingTarget::Pid(pid))
                             .unwrap_or_else(|| panic!("Couldn't unthrottle {}", pid))
                     ),
                 ])
-                .output();
+                .output()?;
         }
 
         Ok(())
@@ -171,6 +380,15 @@ impl Drop for TrafficControl {
             .output()
             .expect(
                 &("root qdisc couldn't be freed for the interface".to_string() + &self.interface),
+            );
+
+        // Clean the ingress qdisc
+        Command::new("tc")
+            .args(["qdisc", "del", "dev", &self.interface, "ingress"])
+            .output()
+            .expect(
+                &("ingress qdisc couldn't be freed for the interface".to_string()
+                    + &self.interface),
             );
     }
 }
