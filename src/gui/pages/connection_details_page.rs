@@ -107,6 +107,9 @@ fn page_content(sniffer: &Sniffer, connection_index: usize) -> Container<'static
         &key.address1,
         key.port1,
         &val.mac_address1,
+        &val.pids,  // can be None
+        val.uid,   
+        true, // can be None
         sniffer.style,
         sniffer.language,
     );
@@ -115,6 +118,9 @@ fn page_content(sniffer: &Sniffer, connection_index: usize) -> Container<'static
         &key.address2,
         key.port2,
         &val.mac_address2,
+        &val.pids,  // None since this is the destination
+        val.uid,   
+        false, // None since this is the destination
         sniffer.style,
         sniffer.language,
     );
@@ -131,7 +137,7 @@ fn page_content(sniffer: &Sniffer, connection_index: usize) -> Container<'static
 
     Container::new(header_and_content.push(content))
         .width(Length::Fixed(1000.0))
-        .height(Length::Fixed(500.0))
+        .height(Length::Fixed(600.0))
         .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
             ContainerStyleTuple(sniffer.style, ContainerType::Standard),
         ))
@@ -313,10 +319,39 @@ fn get_src_or_dest_col(
     ip: &String,
     port: u16,
     mac: &str,
+    pid: &Option<Vec<u32>>,
+    uid: Option<u32>,
+    src: bool,
     style: StyleType,
     language: Language,
 ) -> Column<'static, Message> {
-    Column::new()
+    let uid_pid_section = TextType::highlighted_subtitle_with_desc(
+        "UID",
+        &match uid {
+            Some(uid) => uid.to_string(),
+            None => "N/A".to_string(),
+        },
+        style,  
+      ).push(TextType::highlighted_subtitle_with_desc(
+            "PID(s)",
+            &match &pid {
+                Some(pids) => {
+                    if pids.is_empty() {
+                        "N/A".to_string()
+                    } else {
+                        pids
+                            .iter()
+                            .map(|pid| pid.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    }
+                }
+                None => "N/A".to_string(),
+            },
+            style,
+        ));
+
+    let mut returned_col = Column::new()
         .spacing(4)
         .push(
             Container::new(caption)
@@ -337,7 +372,12 @@ fn get_src_or_dest_col(
             mac_address_translation(language),
             mac,
             style,
-        ))
+        ));
+    
+    if src {
+        returned_col = returned_col.push(uid_pid_section);
+    }
+    returned_col
 }
 
 fn assemble_widgets(
