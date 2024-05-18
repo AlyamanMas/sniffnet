@@ -10,7 +10,7 @@ use iced::Length::Fixed;
 use iced::{Alignment, Length};
 
 use crate::gui::components::radio::{
-    sound_bytes_threshold_radios, sound_favorite_radios, sound_packets_threshold_radios,
+    sound_bytes_threshold_radios, sound_favorite_radios, sound_packets_threshold_radios, sound_process_threshold_radios,
 };
 use crate::gui::components::tab::get_settings_tabs;
 use crate::gui::pages::types::settings_page::SettingsPage;
@@ -27,10 +27,10 @@ use crate::gui::styles::text_input::{TextInputStyleTuple, TextInputType};
 use crate::gui::styles::types::gradient_type::GradientType;
 use crate::gui::types::message::Message;
 use crate::notifications::types::notifications::{
-    BytesNotification, FavoriteNotification, Notification, PacketsNotification,
+    BytesNotification, FavoriteNotification, Notification, PacketsNotification, ProcessNotification,
 };
 use crate::translations::translations::{
-    bytes_threshold_translation, favorite_notification_translation, hide_translation,
+    bytes_threshold_translation, favorite_notification_translation, process_threshold_translation, hide_translation,
     notifications_title_translation, packets_threshold_translation, per_second_translation,
     settings_translation, specify_multiples_translation, threshold_translation, volume_translation,
 };
@@ -98,7 +98,13 @@ pub fn settings_notifications_page(sniffer: &Sniffer) -> Container<Message> {
                         sniffer.notifications.favorite_notification,
                         sniffer.language,
                         sniffer.style,
-                    )),
+                    ))
+                    //make one for notification when process limit is exceeded
+                    .push(get_process_notify(
+                        sniffer.notifications.process_notification,
+                        sniffer.language,
+                        sniffer.style,
+                    ))
             )
             .direction(Direction::Vertical(ScrollbarType::properties()))
             .style(
@@ -327,6 +333,81 @@ fn get_favorite_notify(
     }
 }
 
+fn get_process_notify(
+    process_notification: ProcessNotification,
+    language: Language,
+    style: StyleType,
+) -> Column<'static, Message> {
+    let font = get_font(style);
+    let checkbox = Checkbox::new(
+        process_threshold_translation(language),
+        process_notification.threshold.is_some(),
+        move |toggled| {
+            if toggled {
+                Message::UpdateNotificationSettings(
+                    Notification::Process(ProcessNotification {
+                        threshold: Some(process_notification.previous_threshold),
+                        ..process_notification
+                    }),
+                    false,
+                )
+            } else {
+                Message::UpdateNotificationSettings(
+                    Notification::Process(ProcessNotification {
+                        threshold: None,
+                        ..process_notification
+                    }),
+                    false,
+                )
+            }
+        },
+    )
+    .size(18)
+    .font(font)
+    .style(<CheckboxStyleTuple as Into<iced::theme::Checkbox>>::into(
+        CheckboxStyleTuple(style, CheckboxType::Standard),
+    ));
+
+    let mut ret_val = Column::new().spacing(5).push(checkbox);
+
+    if process_notification.threshold.is_none() {
+        Column::new().padding(5).push(
+            Container::new(ret_val)
+                .padding(10)
+                .width(Fixed(700.0))
+                .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
+                    ContainerStyleTuple(style, ContainerType::BorderedRound),
+                )),
+        )
+    } else {
+        let input_row = Row::new()
+            .push(horizontal_space(Fixed(50.0)))
+            .push(Text::new(format!("{}: ", threshold_translation(language))).font(font))
+            .push(input_group_process(process_notification, style, language));
+        let sound_row =
+            Row::new()
+                .push(horizontal_space(Fixed(50.0)))
+                .push(sound_process_threshold_radios(
+                    process_notification,
+                    font,
+                    style,
+                    language,
+                ));
+        ret_val = ret_val
+            .push(vertical_space(Fixed(5.0)))
+            .push(input_row)
+            .push(sound_row);
+        Column::new().padding(5).push(
+            Container::new(ret_val)
+                .padding(10)
+                .width(Fixed(700.0))
+                .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
+                    ContainerStyleTuple(style, ContainerType::BorderedRound),
+                )),
+        )
+    }
+}
+
 fn input_group_packets(
     packets_notification: PacketsNotification,
     style: StyleType,
@@ -407,6 +488,49 @@ fn input_group_bytes(
         )
         .push(
             Text::new(info_str)
+                .font(font)
+                .vertical_alignment(Vertical::Center)
+                .size(FONT_SIZE_FOOTER),
+        );
+    Container::new(input_row)
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center)
+}
+
+fn input_group_process(
+    process_notification: ProcessNotification,
+    style: StyleType,
+    language: Language,
+) -> Container<'static, Message> {let font = get_font(style);
+    let curr_threshold_str = &process_notification.threshold.unwrap().to_string();
+    let input_row = Row::new()
+        .spacing(10)
+        .push(
+            TextInput::new(
+                "0",
+                if curr_threshold_str == "0" {
+                    ""
+                } else {
+                    curr_threshold_str
+                },
+            )
+            .on_input(move |value| {
+                let process_notification =
+                    ProcessNotification::from(&value, Some(process_notification));
+                Message::UpdateNotificationSettings(
+                    Notification::Process(process_notification),
+                    false,
+                )
+            })
+            .padding([0, 0, 0, 10])
+            .font(font)
+            .width(Length::Fixed(100.0))
+            .style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+                TextInputStyleTuple(style, TextInputType::Standard),
+            )),
+        )
+        .push(
+            Text::new(per_second_translation(language))
                 .font(font)
                 .vertical_alignment(Vertical::Center)
                 .size(FONT_SIZE_FOOTER),

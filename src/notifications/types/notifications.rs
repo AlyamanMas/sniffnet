@@ -11,6 +11,7 @@ pub struct Notifications {
     pub packets_notification: PacketsNotification,
     pub bytes_notification: BytesNotification,
     pub favorite_notification: FavoriteNotification,
+    pub process_notification: ProcessNotification,
 }
 
 impl Default for Notifications {
@@ -20,6 +21,7 @@ impl Default for Notifications {
             packets_notification: PacketsNotification::default(),
             bytes_notification: BytesNotification::default(),
             favorite_notification: FavoriteNotification::default(),
+            process_notification: ProcessNotification::default(),
         }
     }
 }
@@ -33,6 +35,8 @@ pub enum Notification {
     Bytes(BytesNotification),
     /// Favorites notification
     Favorite(FavoriteNotification),
+    /// Process notification
+    Process(ProcessNotification),
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, Copy)]
@@ -168,6 +172,44 @@ impl FavoriteNotification {
         FavoriteNotification {
             notify_on_favorite: false,
             sound,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, Copy)]
+pub struct ProcessNotification {
+    /// Threshold of received + sent bytes; if exceeded a notification is emitted
+    pub threshold: Option<u32>,
+    /// The sound to emit
+    pub sound: Sound,
+    /// The last used Some value for the threshold field
+    pub previous_threshold: u32,
+}
+
+impl Default for ProcessNotification {
+    fn default() -> Self {
+        ProcessNotification {
+            threshold: None,
+            sound: Sound::Gulp,
+            previous_threshold: 750,
+        }
+    }
+}
+
+impl ProcessNotification {
+    /// Arbitrary string constructor. Will fallback values to existing notification if set, default() otherwise
+    pub fn from(value: &str, existing: Option<Self>) -> Self {
+        let default = existing.unwrap_or(Self::default());
+
+        let new_threshold = if value.is_empty() {
+            0
+        } else {
+            value.parse().unwrap_or(default.previous_threshold)
+        };
+        Self {
+            threshold: Some(new_threshold),
+            previous_threshold: new_threshold,
+            ..default
         }
     }
 }

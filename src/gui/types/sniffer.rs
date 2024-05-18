@@ -439,6 +439,10 @@ impl Sniffer {
                 self.notifications.favorite_notification = favorite_notification;
                 favorite_notification.sound
             }
+            Notification::Process(process_notification) => {
+                self.notifications.process_notification = process_notification;
+                process_notification.sound
+            }
         };
         if emit_sound {
             play(sound, self.notifications.volume);
@@ -1055,6 +1059,14 @@ mod tests {
                 sound: Sound::Swhoosh,
             }
         );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: None,
+                sound: Sound::Gulp,
+                previous_threshold: 750
+            }
+        );
         // change volume
         sniffer.update(Message::ChangeVolume(95));
         assert_eq!(sniffer.notifications.volume, 95);
@@ -1080,6 +1092,14 @@ mod tests {
             FavoriteNotification {
                 notify_on_favorite: false,
                 sound: Sound::Swhoosh,
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: None,
+                sound: Sound::Gulp,
+                previous_threshold: 750
             }
         );
         // change packets notifications
@@ -1114,6 +1134,14 @@ mod tests {
             FavoriteNotification {
                 notify_on_favorite: false,
                 sound: Sound::Swhoosh,
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: None,
+                sound: Sound::Gulp,
+                previous_threshold: 750
             }
         );
         // change bytes notifications
@@ -1151,6 +1179,14 @@ mod tests {
                 sound: Sound::Swhoosh,
             }
         );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: Some(1122),
+                sound: Sound::None,
+                previous_threshold: 1122
+            }
+        );
         // change favorite notifications
         sniffer.update(Message::UpdateNotificationSettings(
             Notification::Favorite(FavoriteNotification {
@@ -1182,6 +1218,56 @@ mod tests {
             FavoriteNotification {
                 notify_on_favorite: true,
                 sound: Sound::Pop
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: Some(1122),
+                sound: Sound::None,
+                previous_threshold: 1122
+            }
+        );
+        // change process notifications
+        sniffer.update(Message::UpdateNotificationSettings(
+            Notification::Process(ProcessNotification {
+                threshold: Some(1122),
+                sound: Sound::None,
+                previous_threshold: 1122,
+            }),
+            false,
+        ));
+        assert_eq!(sniffer.notifications.volume, 95);
+        assert_eq!(
+            sniffer.notifications.packets_notification,
+            PacketsNotification {
+                threshold: Some(1122),
+                sound: Sound::None,
+                previous_threshold: 1122
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.bytes_notification,
+            BytesNotification {
+                threshold: Some(3),
+                byte_multiple: ByteMultiple::GB,
+                sound: Sound::None,
+                previous_threshold: 3,
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.favorite_notification,
+            FavoriteNotification {
+                notify_on_favorite: true,
+                sound: Sound::Pop
+            }
+        );
+        assert_eq!(
+            sniffer.notifications.process_notification,
+            ProcessNotification{
+                threshold: Some(1122),
+                sound: Sound::None,
+                previous_threshold: 1122
             }
         );
     }

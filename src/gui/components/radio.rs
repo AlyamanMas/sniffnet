@@ -7,7 +7,7 @@ use crate::gui::styles::style_constants::FONT_SIZE_SUBTITLE;
 use crate::gui::styles::text::{TextStyleTuple, TextType};
 use crate::gui::types::message::Message;
 use crate::notifications::types::notifications::{
-    BytesNotification, FavoriteNotification, Notification, PacketsNotification,
+    BytesNotification, FavoriteNotification, Notification, PacketsNotification, ProcessNotification
 };
 use crate::notifications::types::sound::Sound;
 use crate::translations::translations::{
@@ -223,6 +223,42 @@ pub fn sound_favorite_radios(
     ret_val
 }
 
+pub fn sound_process_threshold_radios(
+    process_notification: ProcessNotification,
+    font: Font,
+    style: StyleType,
+    language: Language,
+
+) -> Row<'static, Message> {
+    let mut ret_val = Row::new()
+    .spacing(20)
+    .push(Text::new(format!("{}:", sound_translation(language))).font(font));
+    for option in Sound::ALL {
+        ret_val = ret_val.push(
+            Radio::new(
+                option.get_radio_label(language),
+                option,
+                Some(process_notification.sound),
+                |value| {
+                    Message::UpdateNotificationSettings(
+                        Notification::Process(ProcessNotification {
+                            sound: value,
+                            ..process_notification
+                        }),
+                        value.ne(&Sound::None),
+                    )
+                },
+            )
+            .spacing(7)
+            .font(font)
+            .size(15)
+            .style(<RadioStyleTuple as Into<iced::theme::Radio>>::into(
+                RadioStyleTuple(style, RadioType::Standard),
+            )),
+        );
+    }
+    ret_val
+}
 pub fn chart_radios(
     active: ChartType,
     font: Font,
