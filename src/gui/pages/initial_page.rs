@@ -17,6 +17,8 @@ use iced::widget::text_input::StyleSheet;
 use iced::Length::FillPortion;
 use iced::{alignment, Alignment, Font, Length};
 use pcap::Device;
+use crate::gui::styles::text_input::TextInputStyleTuple;
+use crate::gui::styles::text_input::TextInputType;
 
 use crate::gui::components::radio::{ip_version_radios, transport_protocol_radios};
 use crate::gui::styles::button::{ButtonStyleTuple, ButtonType};
@@ -43,7 +45,8 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
     let pid_textbox: TextInput<Message,Renderer> = TextInput::new(
         "",
         &sniffer.filters.pid,
-    ).width(60).on_input(Message::PidFilter);
+    ).width(60).on_input(Message::PidFilter).style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+        TextInputStyleTuple(sniffer.style, TextInputType::Standard)));
     let pid_filter = Column::new(
         ).push(
             Text::new("PID")
@@ -56,7 +59,8 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
     let uid_textbox: TextInput<Message,Renderer> = TextInput::new(
         "",
         &sniffer.filters.uid,
-    ).width(60).on_input(Message::UidFilter);
+        ).width(60).on_input(Message::UidFilter).style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+        TextInputStyleTuple(sniffer.style, TextInputType::Standard)));
 
     let uid_filter = Column::new(
         ).push(
@@ -68,7 +72,8 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
     let port_textbox: TextInput<Message,Renderer> = TextInput::new(
         "",
         &sniffer.filters.port,
-    ).width(60).on_input(Message::PortFilter);
+    ).width(60).on_input(Message::PortFilter).style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+        TextInputStyleTuple(sniffer.style, TextInputType::Standard)));
 
     let port_filter = Column::new(
         ).push(
@@ -78,17 +83,22 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
                 .size(FONT_SIZE_SUBTITLE),
         ).push(port_textbox);
     
-    let ip_active = sniffer.filters.ip;
-    let col_ip_radio = ip_version_radios(ip_active, font, sniffer.style, sniffer.language);
-    let col_ip = Column::new()
-        .spacing(10)
+    let added_filters = Column::new()
+        .spacing(20)
         .width(FillPortion(5))
-        .push(col_ip_radio).push(
+        .push(
             Row::new()
                 .push(pid_filter)
                 .push(uid_filter)
                 .push(port_filter
         ).spacing(10).align_items(Alignment::Center));
+    
+    let ip_active = sniffer.filters.ip;
+    let col_ip_radio = ip_version_radios(ip_active, font, sniffer.style, sniffer.language);
+    let col_ip = Column::new()
+        .spacing(10)
+        .width(FillPortion(5))
+        .push(col_ip_radio).align_items(Alignment::Center);
 
     let transport_active = sniffer.filters.transport;
     let col_transport_radio =
@@ -97,7 +107,9 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
         .align_items(Alignment::Center)
         .spacing(10)
         .width(FillPortion(9))
-        .push(col_transport_radio);
+        .push(col_transport_radio)
+        .push(vertical_space(Length::Fixed(20.0)))
+        .push(added_filters);
 
     let app_active = if sniffer.filters.application.ne(&AppProtocol::Other) {
         Some(sniffer.filters.application)
@@ -163,7 +175,8 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
         // if bandwidth id umax, leave the textbox empty, otherwise show the value
         // not working 
         &sniffer.interface_bandwidth,
-    ).width(60).on_input(Message::InterfaceBandwidth);
+    ).width(80).on_input(Message::InterfaceBandwidth).style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+        TextInputStyleTuple(sniffer.style, TextInputType::Standard)));;
     let throttling_interface = Column::new(
         ).push(
             Text::new("Throttling")
