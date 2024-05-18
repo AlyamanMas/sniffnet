@@ -1,4 +1,5 @@
 /// This enum defines the currently displayed modal.
+use super::throttling_mode::ThrottlingMode;
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum MyModal {
     /// Quit modal.
@@ -7,6 +8,6 @@ pub enum MyModal {
     ClearAll,
     /// Connection details modal.
     ConnectionDetails(usize),
-    /// Process throttling modal which will be passed proccess id .
-    ProcessThrottling(u32), //usize is the process id
+    /// Process, port or user throttling modal which will be passed proccess id .
+    ThorttlingModal(u32, ThrottlingMode),
 }

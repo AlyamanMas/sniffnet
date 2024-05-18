@@ -2,6 +2,7 @@ use iced::font;
 
 use crate::gui::components::types::my_modal::MyModal;
 use crate::gui::components::types::report_view::ReportView;
+use crate::gui::components::types::throttling_mode::ThrottlingMode;
 use crate::gui::pages::types::running_page::RunningPage;
 use crate::gui::pages::types::settings_page::SettingsPage;
 use crate::gui::styles::types::gradient_type::GradientType;
@@ -102,4 +103,8 @@ pub enum Message {
     PortFilter(String),
     /// Throttling Interface
     InterfaceBandwidth(String),
+    /// General Bandwidth for throttling, for process, port and user
+    ThrottlingBandwidth(String),
+    /// On pressing throttle
+    Throttle(u32, u32, ThrottlingMode)
 }

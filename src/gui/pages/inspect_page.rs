@@ -42,6 +42,7 @@ use crate::translations::translations_2::{
 use crate::utils::formatted_strings::get_formatted_bytes_string;
 use crate::utils::formatted_strings::{get_connection_color, get_open_report_tooltip};
 use crate::{Language, ReportSortType, RunningPage, Sniffer, StyleType};
+use crate::gui::components::types::throttling_mode::ThrottlingMode;
 
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
 
@@ -327,7 +328,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 scroll_report = scroll_report.push(
                     button(entry_row)
                         .padding(2)
-                        .on_press(Message::ShowModal(MyModal::ProcessThrottling(pid_num, ))) //ProcessThrottle(*pid)
+                        .on_press(Message::ShowModal(MyModal::ThorttlingModal(pid_num, ThrottlingMode::Process))) //ProcessThrottle(*pid)
                         .style(ButtonStyleTuple(sniffer.style, ButtonType::Neutral).into()),
                 );
                 //for some wierd the hover effect is not working for the button
@@ -394,8 +395,9 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         ReportView::Port => {
         //     // Aggregate data by port
             let mut port_stats: HashMap<u16, (u128, u128, u128, u128)> = HashMap::new();
+            let mut port = 0;
             for (key, val, _) in &search_results {
-                let port = match val.traffic_direction {
+                port = match val.traffic_direction {
                     TrafficDirection::Incoming => key.port2,
                     TrafficDirection::Outgoing => key.port1,
                 };
@@ -440,8 +442,13 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                             .width(Length::Fill),
                     );
-
-                scroll_report = scroll_report.push(entry_row);
+                
+                scroll_report = scroll_report.push(
+                        button(entry_row)
+                            .padding(2)
+                            .on_press(Message::ShowModal(MyModal::ThorttlingModal(*port as u32, ThrottlingMode::Port))) //ProcessThrottle(*pid)
+                            .style(ButtonStyleTuple(sniffer.style, ButtonType::Neutral).into()),
+                );
             }
 
             if !sorted_ports_stats_vec.is_empty() {
@@ -561,8 +568,17 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                             .width(Length::Fill),
                     );
-
-                scroll_report = scroll_report.push(entry_row);
+                
+                let int_uid = match uid.parse::<u32>() {
+                    Ok(uid) => uid,
+                    Err(_) => 0,
+                };
+                scroll_report = scroll_report.push(
+                    button(entry_row)
+                        .padding(2)
+                        .on_press(Message::ShowModal(MyModal::ThorttlingModal(int_uid, ThrottlingMode::User))) //ProcessThrottle(*pid)
+                        .style(ButtonStyleTuple(sniffer.style, ButtonType::Neutral).into()),
+                );
             }
             if !sorted_users_stats_vec.is_empty() {
                 col_report = col_report
