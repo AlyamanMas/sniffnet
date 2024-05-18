@@ -106,5 +106,7 @@ pub enum Message {
     /// General Bandwidth for throttling, for process, port and user
     ThrottlingBandwidth(String),
     /// On pressing throttle
-    Throttle(u32, u32, ThrottlingMode)
+    Throttle(Option<u32>, u32, ThrottlingMode),
+    /// Unthrottle
+    Unthrottle(u32, ThrottlingMode),
 }

@@ -108,9 +108,23 @@ pub fn throttling_page(sniffer: &Sniffer, id: u32, throttling_mode: ThrottlingMo
                     .font(font)
                     .size(15),
             ).style(ButtonStyleTuple(style, ButtonType::Standard).into()).on_press(
-                Message::Throttle(sniffer.throttling_bandwidth.trim().to_string().parse::<u32>().unwrap_or(u32::MAX),
-                 id,
+                Message::Throttle(
+                match sniffer.throttling_bandwidth.trim().parse::<u32>() {
+                    Ok(value) => Some(value),
+                    Err(_) => None,
+                },
+                id,
                 throttling_mode)
+            ).width(Length::Fixed(200.0))
+        ).push(
+            button(
+                Text::new("Unthrottle")
+                    .horizontal_alignment(Horizontal::Center)
+                    .vertical_alignment(Vertical::Center)
+                    .font(font)
+                    .size(15),
+            ).style(ButtonStyleTuple(style, ButtonType::Standard).into()).on_press(
+                Message::Unthrottle(id, throttling_mode)
             ).width(Length::Fixed(200.0))
         );
     
