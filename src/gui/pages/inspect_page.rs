@@ -12,6 +12,7 @@ use iced::widget::radio::Appearance;
 use iced::{alignment, Alignment, Font, Length, Renderer};
 
 use std::collections::HashMap;
+use std::u32::MAX;
 
 use crate::gui::components::radio::report_view_radios;
 use crate::gui::components::tab::get_pages_tabs;
@@ -253,38 +254,63 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         ReportView::Process => {
             // loop over all search results, and get pid from info_address_port_pair
             // Aggregate data by PID
-            let mut pid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
+            let mut pid_stats: HashMap<u32, (u128, u128, u128, u128)> = HashMap::new();
             for (_, val, _) in &search_results {
                 if let Some(pids) = &val.pids {
                     for pid in pids {
-                        let (total_bytes, total_packets) = pid_stats
+                        let (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out) = pid_stats
                             .entry(*pid)
-                            .or_insert((0, 0));
-                        *total_bytes += val.transmitted_bytes;
-                        *total_packets += val.transmitted_packets;
+                            .or_insert((0, 0, 0, 0));
+                        if val.traffic_direction == TrafficDirection::Incoming {
+                            *total_bytes_in += val.transmitted_bytes;
+                            *total_packets_in += val.transmitted_packets;
+                        } else {
+                            *total_bytes_out += val.transmitted_bytes;
+                            *total_packets_out += val.transmitted_packets;
+                        }
+                    }
+                }
+                else {
+                    let (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out) = pid_stats
+                        .entry(0)
+                        .or_insert((0, 0, 0, 0));
+                    if val.traffic_direction == TrafficDirection::Incoming {
+                        *total_bytes_in += val.transmitted_bytes;
+                        *total_packets_in += val.transmitted_packets;
+                    } else {
+                        *total_bytes_out += val.transmitted_bytes;
+                        *total_packets_out += val.transmitted_packets;
                     }
                 }
             }
 
             // apply the filter to the search results after aggregation
-            let mut sorted_pids_stats_vec: Vec<(u32, (u128, u128))> = pid_stats.into_iter().collect();
+            let mut sorted_pids_stats_vec: Vec<(u32, (u128, u128, u128, u128))> = pid_stats.into_iter().collect();
+            // make order by most bytes to compare the sum of sum of bytes in and out
             sorted_pids_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
-                ReportSortType::MostBytes => b.0.cmp(&a.0),
-                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                ReportSortType::MostBytes => (b.0 + b.2).cmp(&(a.0 + a.2)),
+                ReportSortType::MostPackets => (b.1 + b.3).cmp(&(a.1 + a.3)),
                 _ => std::cmp::Ordering::Equal,
             });
             let mut scroll_report = Column::new();
-            for (pid, (total_bytes, total_packets)) in &sorted_pids_stats_vec {
+            for (pid, (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out)) in &sorted_pids_stats_vec {
+                // if pid is 0, mark as unknown
+                let pid = if *pid == 0 {
+                    "Unknown".to_string()
+                } else {
+                    pid.to_string()
+                };
+
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
-                        Text::new(format!("{:53} {:<10}    ", " ", pid))
+                        Text::new(format!("{:25} {:<10}    ", " ", pid))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
+                        Text::new(format!("{:<15}        {:<15}        {:<15}        {:<15}", get_formatted_bytes_string(*total_bytes_in), total_packets_in, get_formatted_bytes_string(*total_bytes_out), total_packets_out))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -296,7 +322,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
 
             if !sorted_pids_stats_vec.is_empty() {
                 col_report = col_report
-                    .push(Text::new("  PID       Total Bytes       Total Packets")
+                    .push(Text::new("  PID       Total Bytes(in)       Total Packets(in)       Total Bytes(out)       Total Packets(out)")
                         .vertical_alignment(Vertical::Center)
                         .horizontal_alignment(Horizontal::Center)
                         .height(Length::FillPortion(2))
@@ -350,43 +376,48 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         }
         ReportView::Port => {
         //     // Aggregate data by port
-            let mut port_stats: HashMap<u16, (u128, u128)> = HashMap::new();
+            let mut port_stats: HashMap<u16, (u128, u128, u128, u128)> = HashMap::new();
             for (key, val, _) in &search_results {
                 let port = match val.traffic_direction {
                     TrafficDirection::Incoming => key.port2,
                     TrafficDirection::Outgoing => key.port1,
                 };
-                let (total_bytes, total_packets) = port_stats
+                let (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out) = port_stats
                     .entry(port)
-                    .or_insert((0, 0));
-                *total_bytes += val.transmitted_bytes;
-                *total_packets += val.transmitted_packets;
+                    .or_insert((0, 0, 0, 0));
+                if val.traffic_direction == TrafficDirection::Incoming {
+                    *total_bytes_in += val.transmitted_bytes;
+                    *total_packets_in += val.transmitted_packets;
+                } else {
+                    *total_bytes_out += val.transmitted_bytes;
+                    *total_packets_out += val.transmitted_packets;
+                }
             }
 
-            let mut sorted_ports_stats_vec: Vec<(u16, (u128, u128))> = port_stats.into_iter().collect();
+            let mut sorted_ports_stats_vec: Vec<(u16, (u128, u128, u128, u128))> = port_stats.into_iter().collect();
 
 
 
 
             sorted_ports_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
-                ReportSortType::MostBytes => b.0.cmp(&a.0),
-                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                ReportSortType::MostBytes => (b.0 + b.2).cmp(&(a.0 + a.2)),
+                ReportSortType::MostPackets => (b.1 + b.3).cmp(&(a.1 + a.3)),
                 _ => std::cmp::Ordering::Equal,
             });
 
 
             let mut scroll_report = Column::new();
-            for (port, (total_bytes, total_packets)) in &sorted_ports_stats_vec {
+            for (port, (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out)) in &sorted_ports_stats_vec {
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
-                        Text::new(format!("{:53} {:<10}    ", " ", port))
+                        Text::new(format!("{:25} {:<10}    ", " ", port))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
+                        Text::new(format!("{:<15}        {:<15}        {:<15}        {:<15}", get_formatted_bytes_string(*total_bytes_in), total_packets_in, get_formatted_bytes_string(*total_bytes_out), total_packets_out))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -398,7 +429,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
 
             if !sorted_ports_stats_vec.is_empty() {
                 col_report = col_report
-                    .push(Text::new("  Port       Total Bytes       Total Packets")
+                    .push(Text::new("  Port       Total Bytes(in)       Total Packets(in)       Total Bytes(out)       Total Packets(out)")
                         .vertical_alignment(Vertical::Center)
                         .horizontal_alignment(Horizontal::Center)
                         .height(Length::FillPortion(2))
@@ -452,38 +483,62 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         }
         ReportView::User => {
             // Aggregate data by UID
-            let mut uid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
-            for (key, val, _) in &search_results {
+            let mut uid_stats: HashMap<u32, (u128, u128, u128, u128)> = HashMap::new();
+            for (_, val, _) in &search_results {
                 if let Some(uid) = val.uid {
-                    let (total_bytes, total_packets) = uid_stats
+                    let (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out) = uid_stats
                         .entry(uid)
-                        .or_insert((0, 0));
-                    *total_bytes += val.transmitted_bytes;
-                    *total_packets += val.transmitted_packets;
+                        .or_insert((0, 0, 0, 0));
+                    if val.traffic_direction == TrafficDirection::Incoming {
+                        *total_bytes_in += val.transmitted_bytes;
+                        *total_packets_in += val.transmitted_packets;
+                    } else {
+                        *total_bytes_out += val.transmitted_bytes;
+                        *total_packets_out += val.transmitted_packets;
+                    }
+                }
+                else {
+                    let (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out) = uid_stats
+                        .entry(MAX) // max value of u32 
+                        .or_insert((0, 0, 0, 0));
+                    if val.traffic_direction == TrafficDirection::Incoming {
+                        *total_bytes_in += val.transmitted_bytes;
+                        *total_packets_in += val.transmitted_packets;
+                    } else {
+                        *total_bytes_out += val.transmitted_bytes;
+                        *total_packets_out += val.transmitted_packets;
+                    }
                 }
             }
             
-            let mut sorted_users_stats_vec: Vec<(u32, (u128, u128))> = uid_stats.into_iter().collect();
+            let mut sorted_users_stats_vec: Vec<(u32, (u128, u128, u128, u128))> = uid_stats.into_iter().collect();
 
             sorted_users_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
-                ReportSortType::MostBytes => b.0.cmp(&a.0),
-                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                ReportSortType::MostBytes => (b.0 + b.2).cmp(&(a.0 + a.2)),
+                ReportSortType::MostPackets => (b.1 + b.3).cmp(&(a.1 + a.3)),
                 _ => std::cmp::Ordering::Equal,
             });
 
 
             let mut scroll_report = Column::new();
-            for (uid, (total_bytes, total_packets)) in &sorted_users_stats_vec {
+            for (uid, (total_bytes_in, total_packets_in, total_bytes_out, total_packets_out)) in &sorted_users_stats_vec {
+                // if uid is MAX, mark as unknown
+                let uid = if *uid == MAX {
+                    "Unknown".to_string()
+                } else {
+                    uid.to_string()
+                };
+
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
-                        Text::new(format!("{:53} {:<10}    ", " ", uid))
+                        Text::new(format!("{:25} {:<10}    ", " ", uid))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
+                        Text::new(format!("{:<15}        {:<15}        {:<15}        {:<15}", get_formatted_bytes_string(*total_bytes_in), total_packets_in, get_formatted_bytes_string(*total_bytes_out), total_packets_out))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -492,10 +547,9 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
 
                 scroll_report = scroll_report.push(entry_row);
             }
-
             if !sorted_users_stats_vec.is_empty() {
                 col_report = col_report
-                    .push(Text::new("  UID       Total Bytes       Total Packets")
+                    .push(Text::new("  UID       Total Bytes(in)       Total Packets(in)       Total Bytes(out)       Total Packets(out)")
                         .vertical_alignment(Vertical::Center)
                         .horizontal_alignment(Horizontal::Center)
                         .height(Length::FillPortion(2))
@@ -998,3 +1052,16 @@ fn button_clear_filter(
     .style(ButtonStyleTuple(style, ButtonType::Standard).into())
     .on_press(Message::Search(new_search_parameters))
 }
+
+// make a test to check in the process view if the unknown pid really aggregates all None pids
+#[cfg(test)]
+// start writing the test directly, do not "use"
+mod test{
+    use crate::Sniffer;
+    use crate::gui::pages::inspect_page::lazy_report;
+
+   
+
+
+}
+
