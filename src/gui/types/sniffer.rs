@@ -95,13 +95,10 @@ pub struct Sniffer {
     pub last_focus_time: std::time::Instant,
     /// Bandwidth of the selected interface, which can be used to throttle the interface
     pub interface_bandwidth: String,
-<<<<<<< HEAD
     /// Provides the interface for throttling connections
     pub traffic_controller: TrafficControl,
-=======
     /// General bandwidth throttling value
     pub throttling_bandwidth: String,
->>>>>>> fefd90d (modified throttling page and added a submission button)
 }
 
 impl Sniffer {
@@ -143,30 +140,26 @@ impl Sniffer {
             selected_connection: 0,
             last_focus_time: std::time::Instant::now(),
             interface_bandwidth: String::new(),
-<<<<<<< HEAD
             traffic_controller: traffic_control,
-=======
             throttling_bandwidth: String::new(),
->>>>>>> fefd90d (modified throttling page and added a submission button)
         }
     }
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-<<<<<<< HEAD
             Message::InterfaceBandwidth(bandwidth) => {
                 self.interface_bandwidth = bandwidth.trim().to_string()
             }
-=======
-            Message::Throttle( bandwidth, id, throttlemode) => {
+            Message::Throttle(bandwidth, id, throttlemode) => {
                 // TO DO: match on throttling mode to call the repsective function
-                // whatever function you are calling, its required data, e.g. pid or uid, is in 
+                // whatever function you are calling, its required data, e.g. pid or uid, is in
             }
             Message::ThrottlingBandwidth(bandwidth) => {
                 self.throttling_bandwidth = bandwidth.trim().to_string()
             }
-            Message::InterfaceBandwidth(bandwidth) => self.interface_bandwidth = bandwidth.trim().to_string(),
->>>>>>> fefd90d (modified throttling page and added a submission button)
+            Message::InterfaceBandwidth(bandwidth) => {
+                self.interface_bandwidth = bandwidth.trim().to_string()
+            }
             Message::UidFilter(uid) => self.filters.uid = uid,
             Message::PidFilter(pid) => self.filters.pid = pid,
             Message::PortFilter(port) => self.filters.port = port,
@@ -1113,7 +1106,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: None,
                 sound: Sound::Gulp,
                 previous_threshold: 750
@@ -1148,7 +1141,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: None,
                 sound: Sound::Gulp,
                 previous_threshold: 750
@@ -1190,7 +1183,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: None,
                 sound: Sound::Gulp,
                 previous_threshold: 750
@@ -1233,7 +1226,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: Some(1122),
                 sound: Sound::None,
                 previous_threshold: 1122
@@ -1274,7 +1267,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: Some(1122),
                 sound: Sound::None,
                 previous_threshold: 1122
@@ -1316,7 +1309,7 @@ mod tests {
         );
         assert_eq!(
             sniffer.notifications.process_notification,
-            ProcessNotification{
+            ProcessNotification {
                 threshold: Some(1122),
                 sound: Sound::None,
                 previous_threshold: 1122
