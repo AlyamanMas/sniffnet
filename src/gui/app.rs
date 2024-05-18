@@ -16,6 +16,7 @@ use crate::gui::components::header::header;
 use crate::gui::components::modal::{get_clear_all_overlay, get_exit_overlay, Modal};
 use crate::gui::components::types::my_modal::MyModal;
 use crate::gui::pages::connection_details_page::connection_details_page;
+use crate::gui::pages::process_throttling_page::process_throttling_page; //newly added
 use crate::gui::pages::initial_page::initial_page;
 use crate::gui::pages::inspect_page::inspect_page;
 use crate::gui::pages::notifications_page::notifications_page;
@@ -127,6 +128,9 @@ impl Application for Sniffer {
                     }
                     MyModal::ConnectionDetails(connection_index) => {
                         connection_details_page(self, connection_index)
+                    }
+                    MyModal::ProcessThrottling(process_id) => {
+                        process_throttling_page(self, process_id)
                     }
                 };
 
