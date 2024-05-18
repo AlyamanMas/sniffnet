@@ -37,6 +37,9 @@ pub fn parse_packets(
     let network_layer_filter = filters.ip;
     let transport_layer_filter = filters.transport;
     let app_layer_filter = filters.application;
+    let pid_filter = filters.pid.clone();
+    let uid_filter = filters.uid.clone();
+    let port_filter = filters.port.clone();
 
     let mut port1 = 0;
     let mut port2 = 0;
@@ -46,8 +49,6 @@ pub fn parse_packets(
     let mut application_protocol;
     let mut skip_packet;
     let mut reported_packet;
-    let mut pids: Option<Vec<u32>> = None;
-    let mut uid: Option<u32> = None;
 
     let country_db_reader = Arc::new(maxminddb::Reader::from_source(COUNTRY_MMDB).unwrap());
     let asn_db_reader = Arc::new(maxminddb::Reader::from_source(ASN_MMDB).unwrap());
@@ -123,6 +124,7 @@ pub fn parse_packets(
                         );
 
                         let mut new_info = InfoAddressPortPair::default();
+                        let mut filter_packet = false;
                         if (network_layer_filter.eq(&IpVersion::Other)
                             || network_layer_filter.eq(&network_protocol))
                             && (transport_layer_filter.eq(&TransProtocol::Other)
@@ -137,10 +139,13 @@ pub fn parse_packets(
                                 (mac_address1, mac_address2),
                                 exchanged_bytes,
                                 application_protocol,
+                                pid_filter.clone(),
+                                uid_filter.clone(),
+                                port_filter.clone(),
+                                &mut filter_packet
                             );
-                            reported_packet = true;
+                            reported_packet = !filter_packet;
                         }
-
                         let mut info_traffic = info_traffic_mutex
                             .lock()
                             .expect("Error acquiring mutex\n\r");

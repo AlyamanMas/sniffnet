@@ -11,6 +11,12 @@ pub struct Filters {
     pub transport: TransProtocol,
     /// Application layer protocol
     pub application: AppProtocol,
+    // pids
+    pub pid: String,
+    // uid
+    pub uid: String,
+    // port
+    pub port: String,
 }
 
 impl Default for Filters {
@@ -19,6 +25,9 @@ impl Default for Filters {
             ip: IpVersion::Other,
             transport: TransProtocol::Other,
             application: AppProtocol::Other,
+            pid: String::new(),
+            uid: String::new(),
+            port: String::new(),
         }
     }
 }

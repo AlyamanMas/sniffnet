@@ -90,6 +90,12 @@ pub enum Message {
     FontLoaded(Result<(), font::Error>),
     /// Enable or disable gradients
     GradientsSelection(GradientType),
-
+    /// inspect page report view selection
     ReportViewSelection(ReportView),
+    /// pid filter
+    PidFilter(String),
+    /// uid filter
+    UidFilter(String),
+    /// port filter
+    PortFilter(String),
 }

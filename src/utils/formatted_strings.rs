@@ -37,6 +37,9 @@ pub fn get_active_filters_col(
     style: StyleType,
 ) -> Column<'static, Message> {
     let font = get_font(style);
+    let pid_filter = filters.pid.clone();
+    let uid_filter = filters.uid.clone();
+    let port_filter = filters.port.clone();
 
     let mut ret_val = Column::new().push(
         Text::new(format!("{}:", active_filters_translation(language),))
@@ -46,6 +49,9 @@ pub fn get_active_filters_col(
     if filters.ip.eq(&IpVersion::Other)
         && filters.application.eq(&AppProtocol::Other)
         && filters.transport.eq(&TransProtocol::Other)
+        && pid_filter.is_empty()
+        && uid_filter.is_empty()
+        && port_filter.is_empty()
     {
         ret_val = ret_val.push(Text::new(format!("   {}", none_translation(language))).font(font));
     } else {
@@ -58,6 +64,16 @@ pub fn get_active_filters_col(
         }
         if filters.application.ne(&AppProtocol::Other) {
             filters_string.push_str(&format!("{} ", filters.application));
+        }
+        // pid, uid, port
+        if !pid_filter.is_empty(){
+                filters_string.push_str(&format!("PID: {} ", pid_filter));
+        }
+        if !uid_filter.is_empty() {
+            filters_string.push_str(&format!("UID: {} ", uid_filter));
+        }
+        if !port_filter.is_empty(){
+            filters_string.push_str(&format!("Port: {} ", port_filter));
         }
         ret_val = ret_val.push(Text::new(format!("   {filters_string}")).font(font));
     }

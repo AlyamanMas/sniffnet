@@ -8,6 +8,7 @@ use maxminddb::Reader;
 use pcap::{Active, Address, Capture, Device};
 
 use crate::countries::country_utils::get_country;
+use crate::gui::types::sniffer;
 use crate::networking::types::address_port_pair::AddressPortPair;
 use crate::networking::types::app_protocol::from_port_to_application_protocol;
 use crate::networking::types::data_info::DataInfo;
@@ -22,6 +23,7 @@ use crate::utils::formatted_strings::get_domain_from_r_dns;
 use crate::IpVersion::{IPv4, IPv6};
 use crate::{AppProtocol, InfoTraffic, IpVersion, TransProtocol};
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+use crate::Sniffer;
 use crate::process::Command;
 
 use super::types::trans_protocol;
@@ -126,6 +128,10 @@ pub fn modify_or_insert_in_map(
     mac_addresses: (String, String),
     exchanged_bytes: u128,
     application_protocol: AppProtocol,
+    pid_filter: String,
+    uid_filter: String,
+    port_filter: String,
+    filter_packet: &mut bool,
 ) -> InfoAddressPortPair {
     let now = Local::now();
     let mut traffic_direction = TrafficDirection::default();
@@ -172,6 +178,39 @@ pub fn modify_or_insert_in_map(
         pids = get_pid(port, key.trans_protocol);
         
     };
+    // pid filter only accepts one pid for now and it is of type String
+    if let Some(okay_pid) = pid_filter.trim().parse::<u32>().ok() {
+        if let Some(pids) = &pids {
+            if !pids.contains(&okay_pid) {
+                *filter_packet = true;
+                return InfoAddressPortPair::default();
+            }
+        }
+        else{
+            *filter_packet = true;
+            return InfoAddressPortPair::default();
+        }
+    }
+    // uid filter only accepts one uid for now and it is of type String
+    if let Some(okay_uid) = uid_filter.trim().parse::<u32>().ok() {
+        if let Some(uid) = uid {
+            if uid != okay_uid {
+                *filter_packet = true;
+                return InfoAddressPortPair::default();
+            }
+        }
+        else{
+            *filter_packet = true;
+            return InfoAddressPortPair::default();
+        }
+    }
+    // port filter only accepts one port for now and it is of type String
+    if let Some(okay_port) = port_filter.trim().parse::<u16>().ok() {
+        if okay_port != key.port1 && okay_port != key.port2 {
+            *filter_packet = true;
+            return InfoAddressPortPair::default();
+        }
+    }
 
     let mut info_traffic = info_traffic_mutex
         .lock()

@@ -2,12 +2,18 @@
 //!
 //! It contains elements to select network adapter and traffic filters.
 
+use iced::advanced::renderer::Style;
+use iced::advanced::widget::Text;
+use iced::theme::palette::Background;
 use iced::widget::scrollable::Direction;
 use iced::widget::tooltip::Position;
 use iced::widget::{
     button, horizontal_space, vertical_space, Button, Column, Container, PickList, Row, Scrollable,
-    Text, Tooltip,
+    Tooltip, TextInput
 };
+use iced::Color;
+use iced::Renderer;
+use iced::widget::text_input::StyleSheet;
 use iced::Length::FillPortion;
 use iced::{alignment, Alignment, Font, Length};
 use pcap::Device;
@@ -34,12 +40,55 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
 
     let col_adapter = get_col_adapter(sniffer, font);
 
+    let pid_textbox: TextInput<Message,Renderer> = TextInput::new(
+        "",
+        &sniffer.filters.pid,
+    ).width(60).on_input(Message::PidFilter);
+    let pid_filter = Column::new(
+        ).push(
+            Text::new("PID")
+                .font(font)
+                .style(TextStyleTuple(sniffer.style, TextType::Subtitle))
+                .size(FONT_SIZE_SUBTITLE),
+        ).push(pid_textbox);
+
+
+    let uid_textbox: TextInput<Message,Renderer> = TextInput::new(
+        "",
+        &sniffer.filters.uid,
+    ).width(60).on_input(Message::UidFilter);
+
+    let uid_filter = Column::new(
+        ).push(
+            Text::new("UID")
+                .font(font)
+                .style(TextStyleTuple(sniffer.style, TextType::Subtitle))
+                .size(FONT_SIZE_SUBTITLE),
+        ).push(uid_textbox);
+    let port_textbox: TextInput<Message,Renderer> = TextInput::new(
+        "",
+        &sniffer.filters.port,
+    ).width(60).on_input(Message::PortFilter);
+
+    let port_filter = Column::new(
+        ).push(
+            Text::new("Port")
+                .font(font)
+                .style(TextStyleTuple(sniffer.style, TextType::Subtitle))
+                .size(FONT_SIZE_SUBTITLE),
+        ).push(port_textbox);
+    
     let ip_active = sniffer.filters.ip;
     let col_ip_radio = ip_version_radios(ip_active, font, sniffer.style, sniffer.language);
     let col_ip = Column::new()
         .spacing(10)
         .width(FillPortion(5))
-        .push(col_ip_radio);
+        .push(col_ip_radio).push(
+            Row::new()
+                .push(pid_filter)
+                .push(uid_filter)
+                .push(port_filter
+        ).spacing(10).align_items(Alignment::Center));
 
     let transport_active = sniffer.filters.transport;
     let col_transport_radio =
@@ -48,14 +97,7 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
         .align_items(Alignment::Center)
         .spacing(10)
         .width(FillPortion(9))
-        .push(col_transport_radio)
-        .push(vertical_space(FillPortion(2)))
-        .push(button_start(
-            sniffer.style,
-            sniffer.language,
-            sniffer.color_gradient,
-        ))
-        .push(vertical_space(FillPortion(1)));
+        .push(col_transport_radio);
 
     let app_active = if sniffer.filters.application.ne(&AppProtocol::Other) {
         Some(sniffer.filters.application)
@@ -86,10 +128,12 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
         )
         .push(picklist_app);
 
+    
+
     let filters = Column::new()
         .width(FillPortion(6))
         .padding(10)
-        .spacing(15)
+        .spacing(5)
         .push(
             Row::new().push(
                 select_filters_translation(sniffer.language)
@@ -105,12 +149,18 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
                 .push(col_ip)
                 .push(col_transport)
                 .push(col_app),
+        ).push(
+            Row::new()
+                .push(
+                    button_start(sniffer.style, sniffer.language, sniffer.color_gradient)
+                        
+                )
+                .align_items(Alignment::Center),
         );
-
     let body = Column::new().push(vertical_space(Length::Fixed(5.0))).push(
         Row::new()
             .push(col_adapter)
-            .push(horizontal_space(Length::Fixed(30.0)))
+            .push(horizontal_space(Length::Fixed(60.0)))
             .push(filters),
     );
 

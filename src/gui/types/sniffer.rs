@@ -5,6 +5,7 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::u32::MAX;
 
 use iced::{window, Command};
 use pcap::Device;
@@ -134,6 +135,9 @@ impl Sniffer {
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
+            Message::UidFilter(uid) => self.filters.uid = uid,
+            Message::PidFilter(pid) => self.filters.pid = pid,
+            Message::PortFilter(port) => self.filters.port = port,
             Message::ReportViewSelection(view) => self.report_view = view,
             Message::TickRun => return self.refresh_data(),
             Message::AdapterSelection(name) => self.set_adapter(&name),
