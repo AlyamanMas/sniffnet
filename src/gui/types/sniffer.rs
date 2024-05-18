@@ -150,47 +150,48 @@ impl Sniffer {
             Message::InterfaceBandwidth(bandwidth) => {
                 self.interface_bandwidth = bandwidth.trim().to_string()
             }
-            Message::Throttle(bandwidth, id, throttle_mode) => {
-                dbg!(bandwidth, id, throttle_mode);
-                // TODO: match on throttling mode to call the repsective function
-                // whatever function you are calling, its required data, e.g. pid or uid, is in
-                match throttle_mode {
-                    ThrottlingMode::Process => {
-                        if bandwidth == u32::MAX {
-                            self.traffic_controller
-                                .unthrottle_pid(id)
-                                .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
-                        } else {
-                            self.traffic_controller
-                                .throttle_pid(id, bandwidth.try_into().unwrap())
-                                .unwrap_or_else(|_| {
-                                    panic!("Couldn't throttle process with PID {}", id)
-                                });
-                        }
-                    }
-                    ThrottlingMode::Port => {
-                        if bandwidth == u32::MAX {
-                            self.traffic_controller
-                                .unthrottle_port(id.try_into().unwrap())
-                                .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
-                        } else {
-                            self.traffic_controller
-                                .throttle_port(
-                                    id.try_into().unwrap(),
-                                    bandwidth.try_into().unwrap(),
-                                    None,
-                                )
-                                .unwrap_or_else(|_| panic!("Couldn't throttle port {}", id));
-                        }
-                    }
-                    ThrottlingMode::User => todo!(),
+            Message::Unthrottle(id, throttling_mode) => match throttling_mode {
+                ThrottlingMode::Process => {
+                    self.traffic_controller
+                        .unthrottle_pid(id)
+                        .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
                 }
-            }
+                ThrottlingMode::Port => {
+                    self.traffic_controller
+                        .unthrottle_port(id.try_into().unwrap())
+                        .unwrap_or_else(|_| panic!("Couldn't unthrottle port {}", id));
+                }
+                ThrottlingMode::User => todo!(),
+            },
+            Message::Throttle(bandwidth, id, throttle_mode) => match throttle_mode {
+                ThrottlingMode::Process => {
+                    if let Some(b) = bandwidth {
+                        self.traffic_controller
+                            .throttle_pid(id, b.try_into().unwrap())
+                            .unwrap_or_else(|_| {
+                                panic!("Couldn't throttle process with PID {}", id)
+                            });
+                    } else {
+                        self.traffic_controller
+                            .unthrottle_pid(id)
+                            .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
+                    }
+                }
+                ThrottlingMode::Port => {
+                    if let Some(b) = bandwidth {
+                        self.traffic_controller
+                            .throttle_port(id.try_into().unwrap(), b.try_into().unwrap(), None)
+                            .unwrap_or_else(|_| panic!("Couldn't throttle port {}", id));
+                    } else {
+                        self.traffic_controller
+                            .unthrottle_port(id.try_into().unwrap())
+                            .unwrap_or_else(|_| panic!("Couldn't unthrottle port {}", id));
+                    }
+                }
+                ThrottlingMode::User => todo!(),
+            },
             Message::ThrottlingBandwidth(bandwidth) => {
                 self.throttling_bandwidth = bandwidth.trim().to_string()
-            }
-            Message::InterfaceBandwidth(bandwidth) => {
-                self.interface_bandwidth = bandwidth.trim().to_string()
             }
             Message::UidFilter(uid) => self.filters.uid = uid,
             Message::PidFilter(pid) => self.filters.pid = pid,
