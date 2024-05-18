@@ -21,6 +21,11 @@ use crate::utils::asn::asn;
 use crate::utils::formatted_strings::get_domain_from_r_dns;
 use crate::IpVersion::{IPv4, IPv6};
 use crate::{AppProtocol, InfoTraffic, IpVersion, TransProtocol};
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+use crate::process::Command;
+
+use super::types::trans_protocol;
+
 
 /// This function analyzes the data link layer header passed as parameter and updates variables
 /// passed by reference on the basis of the packet header content.
@@ -136,6 +141,8 @@ pub fn modify_or_insert_in_map(
         .get_index_of(key)
         .unwrap_or(len);
 
+    let mut uid = None;
+    let mut pids = None;
     if index == len {
         // first occurrence of key
 
@@ -153,6 +160,17 @@ pub fn modify_or_insert_in_map(
         // determine traffic direction
         traffic_direction =
             get_traffic_direction(source_ip, destination_ip, &my_interface_addresses);
+        
+
+        let port = if traffic_direction == TrafficDirection::Outgoing {
+            key.port1
+        } else {
+            key.port2
+        };
+
+        uid = get_uid(port, key.trans_protocol);
+        pids = get_pid(port, key.trans_protocol);
+        
     };
 
     let mut info_traffic = info_traffic_mutex
@@ -178,6 +196,8 @@ pub fn modify_or_insert_in_map(
             very_long_address,
             traffic_direction,
             index,
+            uid,
+            pids,
         })
         .clone();
 
@@ -459,6 +479,43 @@ pub fn get_capture_result(device: &MyDevice) -> (Option<String>, Option<Capture<
     }
 }
 
+// using netstat to get the uid of the process that is using a specific port
+pub fn get_uid(port: u16, trans_protocol: TransProtocol) -> Option<u32> {
+    let af_falgs = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let protocol_flags = if trans_protocol == TransProtocol::TCP {
+        ProtocolFlags::TCP
+    } else {
+        ProtocolFlags::UDP
+    };
+    let socket_info = get_sockets_info(af_falgs, protocol_flags).unwrap(); 
+
+    for socket in socket_info {
+        if socket.local_port() == port {
+            return Some(socket.uid);
+        }
+    }
+    None
+}
+
+// using netstat to get the pids of the process that is using a specific port
+pub fn get_pid (port: u16, trans_protocol: TransProtocol) -> Option<Vec<u32>> {
+    let af_falgs = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let protocol_flags = if trans_protocol == TransProtocol::TCP {
+        ProtocolFlags::TCP
+    } else {
+        ProtocolFlags::UDP
+    };
+
+    let socket_info = get_sockets_info(af_falgs, protocol_flags).unwrap();
+
+    for socket in socket_info {
+        if socket.local_port() == port {
+            return Some(socket.associated_pids);
+        }
+    }
+    None
+}
+
 /// Converts a MAC address in its hexadecimal form
 fn mac_from_dec_to_hex(mac_dec: [u8; 6]) -> String {
     let mut mac_hex = String::new();
@@ -567,6 +624,7 @@ fn ipv6_from_long_dec_to_short_hex(ipv6_long: [u8; 16]) -> String {
 
     ipv6_hex_compressed
 }
+
 
 #[cfg(test)]
 mod tests {

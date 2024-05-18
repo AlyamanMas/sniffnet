@@ -29,6 +29,7 @@ use crate::gui::styles::text::{TextStyleTuple, TextType};
 use crate::gui::styles::text_input::{TextInputStyleTuple, TextInputType};
 use crate::gui::types::message::Message;
 use crate::networking::types::search_parameters::{FilterInputType, SearchParameters};
+use crate::networking::types::traffic_direction::TrafficDirection;
 use crate::networking::types::trans_protocol::TransProtocol;
 use crate::report::get_report_entries::get_searched_entries;
 use crate::translations::translations::application_protocol_translation;
@@ -37,6 +38,7 @@ use crate::translations::translations_2::{
     no_search_results_translation, only_show_favorites_translation, search_filters_translation,
     showing_results_translation, sort_by_translation,
 };
+use crate::utils::formatted_strings::get_formatted_bytes_string;
 use crate::utils::formatted_strings::{get_connection_color, get_open_report_tooltip};
 use crate::{Language, ReportSortType, RunningPage, Sniffer, StyleType};
 
@@ -178,17 +180,15 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
             let mut scroll_report = Column::new();
             let start_entry_num = (sniffer.page_number - 1) * 20 + 1;
             let end_entry_num = start_entry_num + search_results.len() - 1;
-            for (key, val, flag, pid, uid) in search_results {
+            for (key, val, flag) in search_results {
                 let entry_color = get_connection_color(val.traffic_direction, sniffer.style);
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
                         Text::new(format!(
-                            "            {}{}     {}    {}  ",
+                            "          {}{}",
                             key.print_gui(),
                             val.print_gui(),
-                            pid.map_or("N/A".to_string(), |p| p.to_string()),
-                            uid.map_or("N/A".to_string(), |u| u.to_string()),
                         ))
                         .style(iced::theme::Text::Color(entry_color))
                         .font(font),
@@ -251,20 +251,30 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
             }
         }
         ReportView::Process => {
+            // loop over all search results, and get pid from info_address_port_pair
             // Aggregate data by PID
             let mut pid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
-            for (key, val, _, pid, _) in &search_results {
-                if let Some(pid) = pid {
-                    let (total_bytes, total_packets) = pid_stats
-                        .entry(*pid)
-                        .or_insert((0, 0));
-                    *total_bytes += val.transmitted_bytes;
-                    *total_packets += val.transmitted_packets;
+            for (_, val, _) in &search_results {
+                if let Some(pids) = &val.pids {
+                    for pid in pids {
+                        let (total_bytes, total_packets) = pid_stats
+                            .entry(*pid)
+                            .or_insert((0, 0));
+                        *total_bytes += val.transmitted_bytes;
+                        *total_packets += val.transmitted_packets;
+                    }
                 }
             }
 
+            // apply the filter to the search results after aggregation
+            let mut sorted_pids_stats_vec: Vec<(u32, (u128, u128))> = pid_stats.into_iter().collect();
+            sorted_pids_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
+                ReportSortType::MostBytes => b.0.cmp(&a.0),
+                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                _ => std::cmp::Ordering::Equal,
+            });
             let mut scroll_report = Column::new();
-            for (pid, (total_bytes, total_packets)) in &pid_stats {
+            for (pid, (total_bytes, total_packets)) in &sorted_pids_stats_vec {
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
@@ -274,7 +284,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
+                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -284,7 +294,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 scroll_report = scroll_report.push(entry_row);
             }
 
-            if !pid_stats.is_empty() {
+            if !sorted_pids_stats_vec.is_empty() {
                 col_report = col_report
                     .push(Text::new("  PID       Total Bytes       Total Packets")
                         .vertical_alignment(Vertical::Center)
@@ -320,8 +330,8 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                         sniffer.language,
                         sniffer.page_number,
                         1,  // Update start entry num
-                        pid_stats.len(),  // Update end entry num
-                        pid_stats.len(),
+                        sorted_pids_stats_vec.len(),  // Update end entry num
+                        sorted_pids_stats_vec.len(),
                     ));
             } else {
                 col_report = col_report.push(
@@ -339,18 +349,34 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
             }
         }
         ReportView::Port => {
-            // Aggregate data by port
+        //     // Aggregate data by port
             let mut port_stats: HashMap<u16, (u128, u128)> = HashMap::new();
-            for (key, val, _, _, _) in &search_results {
+            for (key, val, _) in &search_results {
+                let port = match val.traffic_direction {
+                    TrafficDirection::Incoming => key.port2,
+                    TrafficDirection::Outgoing => key.port1,
+                };
                 let (total_bytes, total_packets) = port_stats
-                    .entry(key.port1)
+                    .entry(port)
                     .or_insert((0, 0));
                 *total_bytes += val.transmitted_bytes;
                 *total_packets += val.transmitted_packets;
             }
 
+            let mut sorted_ports_stats_vec: Vec<(u16, (u128, u128))> = port_stats.into_iter().collect();
+
+
+
+
+            sorted_ports_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
+                ReportSortType::MostBytes => b.0.cmp(&a.0),
+                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                _ => std::cmp::Ordering::Equal,
+            });
+
+
             let mut scroll_report = Column::new();
-            for (port, (total_bytes, total_packets)) in &port_stats {
+            for (port, (total_bytes, total_packets)) in &sorted_ports_stats_vec {
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
@@ -360,7 +386,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
+                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -370,7 +396,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 scroll_report = scroll_report.push(entry_row);
             }
 
-            if !port_stats.is_empty() {
+            if !sorted_ports_stats_vec.is_empty() {
                 col_report = col_report
                     .push(Text::new("  Port       Total Bytes       Total Packets")
                         .vertical_alignment(Vertical::Center)
@@ -406,8 +432,8 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                         sniffer.language,
                         sniffer.page_number,
                         1,  // Update start entry num
-                        port_stats.len(),  // Update end entry num
-                        port_stats.len(),
+                        sorted_ports_stats_vec.len(),  // Update end entry num
+                        sorted_ports_stats_vec.len(),
                     ));
             } else {
                 col_report = col_report.push(
@@ -427,18 +453,27 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
         ReportView::User => {
             // Aggregate data by UID
             let mut uid_stats: HashMap<u32, (u128, u128)> = HashMap::new();
-            for (_, val, _, _, uid) in &search_results {
-                if let Some(uid) = uid {
+            for (key, val, _) in &search_results {
+                if let Some(uid) = val.uid {
                     let (total_bytes, total_packets) = uid_stats
-                        .entry(*uid)
+                        .entry(uid)
                         .or_insert((0, 0));
                     *total_bytes += val.transmitted_bytes;
                     *total_packets += val.transmitted_packets;
                 }
             }
+            
+            let mut sorted_users_stats_vec: Vec<(u32, (u128, u128))> = uid_stats.into_iter().collect();
+
+            sorted_users_stats_vec.sort_by(|&(_, a), &(_, b)| match sniffer.report_sort_type {
+                ReportSortType::MostBytes => b.0.cmp(&a.0),
+                ReportSortType::MostPackets => b.1.cmp(&a.1),
+                _ => std::cmp::Ordering::Equal,
+            });
+
 
             let mut scroll_report = Column::new();
-            for (uid, (total_bytes, total_packets)) in &uid_stats {
+            for (uid, (total_bytes, total_packets)) in &sorted_users_stats_vec {
                 let entry_row = Row::new()
                     .align_items(Alignment::Center)
                     .push(
@@ -448,7 +483,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
                     )
                     .push(
-                        Text::new(format!("{:<15}    {:<15}", total_bytes, total_packets))
+                        Text::new(format!("{:<15}    {:<15}", get_formatted_bytes_string(*total_bytes), total_packets))
                             .style(iced::Color::from_rgb(1.0, 0.5, 0.0))
                             .font(font) // Use a fixed-width font
                             .horizontal_alignment(iced::alignment::Horizontal::Left)
@@ -458,7 +493,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                 scroll_report = scroll_report.push(entry_row);
             }
 
-            if !uid_stats.is_empty() {
+            if !sorted_users_stats_vec.is_empty() {
                 col_report = col_report
                     .push(Text::new("  UID       Total Bytes       Total Packets")
                         .vertical_alignment(Vertical::Center)
@@ -494,8 +529,8 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                         sniffer.language,
                         sniffer.page_number,
                         1,  // Update start entry num
-                        uid_stats.len(),  // Update end entry num
-                        uid_stats.len(),
+                        sorted_users_stats_vec.len(),  // Update end entry num
+                        sorted_users_stats_vec.len(),
                     ));
             } else {
                 col_report = col_report.push(
@@ -510,7 +545,7 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                         .push(Text::new(no_search_results_translation(sniffer.language)).font(font))
                         .push(vertical_space(Length::FillPortion(2))),
                 );
-            }
+        }
         }
     }
 
@@ -536,7 +571,6 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
             .width(Length::FillPortion(1)),
         )
 }
-
 
 
 // Function to handle the button message

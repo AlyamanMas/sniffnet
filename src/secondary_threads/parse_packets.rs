@@ -18,6 +18,8 @@ use crate::networking::types::filters::Filters;
 use crate::networking::types::info_address_port_pair::InfoAddressPortPair;
 use crate::networking::types::my_device::MyDevice;
 use crate::networking::types::traffic_direction::TrafficDirection;
+use crate::networking::manage_packets::get_pid;
+use crate::networking::manage_packets::get_uid;
 use crate::utils::asn::ASN_MMDB;
 use crate::{AppProtocol, InfoTraffic, IpVersion, TransProtocol};
 
@@ -44,6 +46,8 @@ pub fn parse_packets(
     let mut application_protocol;
     let mut skip_packet;
     let mut reported_packet;
+    let mut pids: Option<Vec<u32>> = None;
+    let mut uid: Option<u32> = None;
 
     let country_db_reader = Arc::new(maxminddb::Reader::from_source(COUNTRY_MMDB).unwrap());
     let asn_db_reader = Arc::new(maxminddb::Reader::from_source(ASN_MMDB).unwrap());
@@ -108,6 +112,7 @@ pub fn parse_packets(
                         if skip_packet {
                             continue;
                         }
+                        // get traffic direction to know which port is on the local machine
 
                         let key: AddressPortPair = AddressPortPair::new(
                             address1.clone(),

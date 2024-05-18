@@ -34,6 +34,10 @@ pub struct InfoAddressPortPair {
     pub index: usize,
     /// Determines if the connection is incoming or outgoing
     pub traffic_direction: TrafficDirection,
+    ///  user id of the process running the connection on the local machine
+    pub uid: Option<u32>,
+    /// pid[s] of the process running the connection on the local machine
+    pub pids: Option<Vec<u32>>,
 }
 
 impl Default for InfoAddressPortPair {
@@ -49,6 +53,8 @@ impl Default for InfoAddressPortPair {
             very_long_address: false,
             traffic_direction: TrafficDirection::default(),
             index: 0,
+            uid: None,
+            pids: None,
         }
     }
 }
@@ -56,7 +62,7 @@ impl Default for InfoAddressPortPair {
 impl InfoAddressPortPair {
     pub fn print_gui(&self) -> String {
         self.to_string()
-            .get(0..35)
+            .get(0..60)
             .unwrap()
             .to_string()
             .replace('|', "")
@@ -75,20 +81,56 @@ impl fmt::Display for InfoAddressPortPair {
         if self.very_long_address {
             write!(
                 f,
-                "{:^9}|{:>10}  |{:>9}   | {} | {} |",
+                "{:^9}|{:>10}  |{:>9} |{:>9}|{:>9}       | {} | {} |",
                 app_string,
                 self.transmitted_packets,
                 bytes_string,
+                match &self.pids {
+                    Some(pids) => {
+                        if pids.is_empty() {
+                            "N/A".to_string()
+                        } else {
+                            pids.iter()
+                                .map(|pid| pid.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        }
+                    },
+                    None => "N/A".to_string(),
+                },
+                // if there is no uid or pids, print N/A
+                match self.uid {
+                    Some(uid) => uid.to_string(),
+                    None => "N/A".to_string(),
+                },
                 self.initial_timestamp.to_string().get(0..19).unwrap(),
                 self.final_timestamp.to_string().get(0..19).unwrap()
             )
         } else {
             write!(
                 f,
-                "{:^9}|{:>10}  |{:>9}   | {} | {} |{}",
+                "{:^9}|{:>10}  |{:>9} |{:>9}|{:>9}       | {} | {} |{}",
                 app_string,
                 self.transmitted_packets,
                 bytes_string,
+                match &self.pids {
+                    Some(pids) => {
+                        if pids.is_empty() {
+                            "N/A".to_string()
+                        } else {
+                            pids.iter()
+                                .map(|pid| pid.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        }
+                    },
+                    None => "N/A".to_string(),
+                },
+                // if there is no uid or pids, print N/A
+                match self.uid {
+                    Some(uid) => uid.to_string(),
+                    None => "N/A".to_string(),
+                },
                 self.initial_timestamp.to_string().get(0..19).unwrap(),
                 self.final_timestamp.to_string().get(0..19).unwrap(),
                 " ".repeat(40)
