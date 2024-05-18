@@ -1360,6 +1360,28 @@ pub fn bytes_threshold_translation(language: Language) -> &'static str {
     }
 }
 
+pub fn process_threshold_translation(language: Language) -> &'static str {
+    match language {
+        Language::EN => "Notify me when a process threshold is exceeded",
+        Language::IT => "Notificami quando una soglia di byte è superata",
+        Language::FR => "Me notifier lorsqu'un seuil de donnée est atteint",
+        Language::ES => "Notificarme cuando se exceda un límite de bytes",
+        Language::PL => "Powiadom mnie, gdy zostanie przekroczony próg bajtów",
+        Language::DE => "Benachrichtige mich, wenn die Bytes eine Schwelle überschreiten",
+        Language::UK => "Повідом мене про переліміт байтів",
+        Language::ZH => "超过设定的网络流量阈值时通知我",
+        Language::RO => "Anunță-mă când este depășit un prag de octeți",
+        Language::KO => "바이트 임계값을 초과하면 알림",
+        Language::TR => "Bayt eşiği aşıldığında beni bilgilendir",
+        Language::RU => "Уведомить, когда порог по полосе в байтах превышен",
+        Language::PT => "Notifique-me quando um limite de bytes for excedido",
+        Language::EL => "Ειδοποίησέ με όταν το όριο των bytes ξεπεραστεί",
+        // Language::FA => "به من اطلاع بده وقتی آستانه یک بایت فراتر رفت",
+        Language::SV => "Notifiera mig när en gräns för bytes har överstigits",
+        Language::FI => "Ilmoita minulle, kun tavuraja on ylittynyt",
+    }
+}
+
 pub fn per_second_translation(language: Language) -> &'static str {
     match language {
         Language::EN => "(per second)",
