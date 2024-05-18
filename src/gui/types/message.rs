@@ -98,4 +98,6 @@ pub enum Message {
     UidFilter(String),
     /// port filter
     PortFilter(String),
+    /// Throttling Interface
+    InterfaceBandwidth(String),
 }

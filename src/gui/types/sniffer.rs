@@ -92,6 +92,8 @@ pub struct Sniffer {
     pub selected_connection: usize,
     /// Record the timestamp of last window focus
     pub last_focus_time: std::time::Instant,
+    /// Bandwidth of the selected interface, which can be used to throttle the interface
+    pub interface_bandwidth: String,
 }
 
 impl Sniffer {
@@ -130,11 +132,13 @@ impl Sniffer {
             page_number: 1,
             selected_connection: 0,
             last_focus_time: std::time::Instant::now(),
+            interface_bandwidth: String::new(),
         }
     }
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
+            Message::InterfaceBandwidth(bandwidth) => self.interface_bandwidth = bandwidth.trim().to_string(),
             Message::UidFilter(uid) => self.filters.uid = uid,
             Message::PidFilter(pid) => self.filters.pid = pid,
             Message::PortFilter(port) => self.filters.port = port,

@@ -157,10 +157,27 @@ pub fn initial_page(sniffer: &Sniffer) -> Container<Message> {
                 )
                 .align_items(Alignment::Center),
         );
+    // add a UI element to specify the percentage of throttlling to apply on the selected network adapter
+    let throttling_textbox: TextInput<Message,Renderer> = TextInput::new(
+        "",
+        // if bandwidth id umax, leave the textbox empty, otherwise show the value
+        // not working 
+        &sniffer.interface_bandwidth,
+    ).width(60).on_input(Message::InterfaceBandwidth);
+    let throttling_interface = Column::new(
+        ).push(
+            Text::new("Throttling")
+                .font(font)
+                .style(TextStyleTuple(sniffer.style, TextType::Subtitle))
+                .size(FONT_SIZE_SUBTITLE),
+        ).push(throttling_textbox);
+    
     let body = Column::new().push(vertical_space(Length::Fixed(5.0))).push(
         Row::new()
             .push(col_adapter)
-            .push(horizontal_space(Length::Fixed(60.0)))
+            .push(throttling_interface).align_items(Alignment::Center)
+            // add a rectange with maximum height of 1 pixel to separate the adapter list from the filters
+            .push(Container::new(Text::new("")).width(Length::Fixed(10.0)).height(Length::Fill))
             .push(filters),
     );
 
