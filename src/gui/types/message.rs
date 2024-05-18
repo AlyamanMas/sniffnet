@@ -78,6 +78,8 @@ pub enum Message {
     ResetButtonPressed,
     /// Ctrl+D keys have been pressed
     CtrlDPressed,
+    ///input change
+    InputChanged(String),
     /// Update search parameters of inspect page
     Search(SearchParameters),
     /// Update page result number in inspect
