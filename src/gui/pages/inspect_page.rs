@@ -317,7 +317,24 @@ fn lazy_report(sniffer: &Sniffer, report_view: ReportView) -> Row<'static, Messa
                             .width(Length::Fill),
                     );
 
-                scroll_report = scroll_report.push(entry_row);
+                // add entry_row as button to scroll_report
+                //convert pid from string to num if possible, if not store value -1 in pid_num
+                let pid_num = pid.parse::<u32>().unwrap_or(0);
+
+
+
+
+                scroll_report = scroll_report.push(
+                    button(entry_row)
+                        .padding(2)
+                        .on_press(Message::ShowModal(MyModal::ProcessThrottling(pid_num, ))) //ProcessThrottle(*pid)
+                        .style(ButtonStyleTuple(sniffer.style, ButtonType::Neutral).into()),
+                );
+                //for some wierd the hover effect is not working for the button
+                
+                
+                // scroll_report = scroll_report.push(
+                //     entry_row);
             }
 
             if !sorted_pids_stats_vec.is_empty() {

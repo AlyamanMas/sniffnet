@@ -1,4 +1,5 @@
 pub mod connection_details_page;
+pub mod process_throttling_page; //this is associated with process_throttling_page.rs file
 pub mod initial_page;
 pub mod inspect_page;
 pub mod notifications_page;

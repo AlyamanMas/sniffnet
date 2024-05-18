@@ -7,4 +7,6 @@ pub enum MyModal {
     ClearAll,
     /// Connection details modal.
     ConnectionDetails(usize),
+    /// Process throttling modal which will be passed proccess id .
+    ProcessThrottling(u32), //usize is the process id
 }
