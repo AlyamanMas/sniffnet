@@ -3,9 +3,8 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 use std::time::Duration;
-use std::u32::MAX;
-use std::{panic, process, thread};
 
 use iced::{window, Command};
 use pcap::Device;
@@ -14,6 +13,7 @@ use crate::chart::manage_chart_data::update_charts_data;
 use crate::gui::components::types::my_modal::MyModal;
 use crate::gui::components::types::report_view::ReportView;
 
+use crate::gui::components::types::throttling_mode::ThrottlingMode;
 use crate::gui::pages::types::running_page::RunningPage;
 use crate::gui::pages::types::settings_page::SettingsPage;
 use crate::gui::styles::types::gradient_type::GradientType;
@@ -150,9 +150,41 @@ impl Sniffer {
             Message::InterfaceBandwidth(bandwidth) => {
                 self.interface_bandwidth = bandwidth.trim().to_string()
             }
-            Message::Throttle(bandwidth, id, throttlemode) => {
-                // TO DO: match on throttling mode to call the repsective function
+            Message::Throttle(bandwidth, id, throttle_mode) => {
+                dbg!(bandwidth, id, throttle_mode);
+                // TODO: match on throttling mode to call the repsective function
                 // whatever function you are calling, its required data, e.g. pid or uid, is in
+                match throttle_mode {
+                    ThrottlingMode::Process => {
+                        if bandwidth == u32::MAX {
+                            self.traffic_controller
+                                .unthrottle_pid(id)
+                                .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
+                        } else {
+                            self.traffic_controller
+                                .throttle_pid(id, bandwidth.try_into().unwrap())
+                                .unwrap_or_else(|_| {
+                                    panic!("Couldn't throttle process with PID {}", id)
+                                });
+                        }
+                    }
+                    ThrottlingMode::Port => {
+                        if bandwidth == u32::MAX {
+                            self.traffic_controller
+                                .unthrottle_port(id.try_into().unwrap())
+                                .unwrap_or_else(|_| panic!("Couldn't unthrottle process {}", id));
+                        } else {
+                            self.traffic_controller
+                                .throttle_port(
+                                    id.try_into().unwrap(),
+                                    bandwidth.try_into().unwrap(),
+                                    None,
+                                )
+                                .unwrap_or_else(|_| panic!("Couldn't throttle port {}", id));
+                        }
+                    }
+                    ThrottlingMode::User => todo!(),
+                }
             }
             Message::ThrottlingBandwidth(bandwidth) => {
                 self.throttling_bandwidth = bandwidth.trim().to_string()
