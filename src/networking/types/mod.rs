@@ -11,6 +11,7 @@ pub mod info_traffic;
 pub mod ip_version;
 pub mod my_device;
 pub mod search_parameters;
+pub mod traffic_control;
 pub mod traffic_direction;
 pub mod traffic_type;
 pub mod trans_protocol;
