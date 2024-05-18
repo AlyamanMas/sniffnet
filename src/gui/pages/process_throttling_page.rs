@@ -30,17 +30,73 @@ use crate::translations::translations_2::{
     fqdn_translation, mac_address_translation, socket_address_translation, source_translation,
     transmitted_data_translation,
 };
+
+use iced::widget::{
+    Checkbox, Scrollable,
+    TextInput,
+};
+
+use crate::gui::styles::text_input::{TextInputStyleTuple, TextInputType};
+
+
 use crate::utils::formatted_strings::{get_formatted_bytes_string_with_b, get_socket_address};
 use crate::{Language, Sniffer, StyleType};
 
+
+// pub fn process_throttling_page(sniffer: &Sniffer, process_id: u32) -> Container<Message>  {
+//     //display hellow world for debugging
+//     let font = get_font(sniffer.style);
+//     //declare styel of type StyleType
+//     let style = sniffer.style;
+//     //convert process_id to str and store it in pid_str
+//     let pid_str = process_id.to_string();
+//     let string = "Please Enter Throttling Value for pid: ".to_string() ;
+//     let mut column = Column::new()
+//         .spacing(10)
+//         .align_items(Alignment::Center)
+//         .push(Text::new( string + &pid_str).size(20))
+//         .push(TextInput::new("Throttling value", "")
+//             // .on_input(move |value| {
+//             //     println!("Input value: {}", value);
+//             // })
+//             .padding([10, 10, 10, 10])
+//             .font(font)
+//             .width(Length::Fixed(100.0))
+//             .style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+//                 TextInputStyleTuple(style, TextInputType::Standard),
+//             )),
+//         );
+//     // column = column.push(Text::new("Throttling Page").size(30));
+//     Container::new(column)
+//         .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
+//             ContainerStyleTuple(sniffer.style, ContainerType::Standard),
+//         ))
+
+// }
+
 pub fn process_throttling_page(sniffer: &Sniffer, process_id: u32) -> Container<Message> {
-    //display hellow world for debugging
-    let mut column = Column::new().spacing(10).align_items(Alignment::Center);
-    column = column.push(Text::new("Throttling Page").size(30));
+    // Display "Hello World" for debugging
+    let font = get_font(sniffer.style);
+    let style = sniffer.style;
+    let pid_str = process_id.to_string();
+    let string = "Please Enter Throttling Value for pid: ".to_string();
+    
+    let column = Column::new()
+        .spacing(10)
+        .align_items(Alignment::Center)
+        .push(Text::new(string + &pid_str).size(20))
+        .push(TextInput::new("Throttling value", "")
+            .on_input(Message::InputChanged) // Send InputChanged message on input
+            .padding([10, 10, 10, 10])
+            .font(font)
+            .width(Length::Fixed(100.0))
+            .style(<TextInputStyleTuple as Into<iced::theme::TextInput>>::into(
+                TextInputStyleTuple(style, TextInputType::Standard),
+            ))
+        );
+    
     Container::new(column)
         .style(<ContainerStyleTuple as Into<iced::theme::Container>>::into(
             ContainerStyleTuple(sniffer.style, ContainerType::Standard),
         ))
-
 }
-

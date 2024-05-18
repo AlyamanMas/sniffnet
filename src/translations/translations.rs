@@ -1382,6 +1382,8 @@ pub fn process_threshold_translation(language: Language) -> &'static str {
     }
 }
 
+
+
 pub fn per_second_translation(language: Language) -> &'static str {
     match language {
         Language::EN => "(per second)",
