@@ -25,7 +25,9 @@ use networking::types::app_protocol::AppProtocol;
 use networking::types::byte_multiple::ByteMultiple;
 use networking::types::info_traffic::InfoTraffic;
 use networking::types::ip_version::IpVersion;
+use networking::types::traffic_control::TrafficControl;
 use networking::types::trans_protocol::TransProtocol;
+use pcap::Device;
 use report::types::report_sort_type::ReportSortType;
 use secondary_threads::write_report_file::sleep_and_write_report_loop;
 use translations::types::language::Language;
@@ -66,6 +68,9 @@ pub fn main() -> iced::Result {
     // to kill the main thread as soon as a secondary thread panics
     let orig_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
+        for device in Device::list().expect("Couldn't get network devices") {
+            TrafficControl::clean_traffic_control_settings(device.name);
+        }
         // invoke the default handler and exit the process
         orig_hook(panic_info);
         process::exit(1);

@@ -5,7 +5,7 @@ use std::{
     process::{Child, Command},
 };
 
-#[derive(Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ThrottlingTarget {
     Pid(u32),
     PortEgress(u16),
@@ -13,14 +13,20 @@ pub enum ThrottlingTarget {
     Interface,
 }
 
+#[derive(Debug)]
 pub struct TrafficControl {
     identifier_counter: u16,
     identifiers_table: HashMap<ThrottlingTarget, u16>,
     interface: String,
 }
 
+pub struct IngressThrottleConfig {
+    pub kbps: usize,
+    pub burst_kb: usize,
+}
+
 impl TrafficControl {
-    pub fn new(interface: String) -> Self {
+    pub fn new(interface: String, interface_config: Option<IngressThrottleConfig>) -> Self {
         // Clean up all the qdiscs and otherwise before doing anything in case there are previous
         // qdiscs (like if the application was irregularly terminated before and the resources were
         // not properly cleaned)
@@ -53,6 +59,42 @@ impl TrafficControl {
                 "Couldn't make new ingress qdisc for interface {}",
                 &interface
             );
+        }
+
+        // If we have a valid interface config, throttle the interface
+        if let Some(ingress_config) = interface_config {
+            if Command::new("tc")
+                .args([
+                    "filter",
+                    "add",
+                    "dev",
+                    &interface,
+                    "parent",
+                    "ffff:",
+                    "protocol",
+                    "ip",
+                    "u32",
+                    "match",
+                    "u32",
+                    "0",
+                    "0",
+                    "police",
+                    "rate",
+                    &format!("{}kbps", ingress_config.kbps),
+                    "burst",
+                    &format!("{}k", ingress_config.burst_kb),
+                    "drop",
+                    "flowid",
+                    ":1",
+                ])
+                .output()
+                .is_err()
+            {
+                eprintln!(
+                    "Couldn't throttle the ingress of the interface {}",
+                    &interface
+                );
+            }
         }
 
         // Create the filter that redirects cgroup packets to corresponding classes
@@ -368,6 +410,22 @@ impl TrafficControl {
 
         Ok(())
     }
+
+    // TODO: Also run this function when we return from a scan and change interfaces
+    pub fn clean_traffic_control_settings(interface: String) {
+        Command::new("tc")
+            .args(["qdisc", "del", "dev", &interface, "root"])
+            .output()
+            .expect(&("root qdisc couldn't be freed for the interface".to_string() + &interface));
+
+        // Clean the ingress qdisc
+        Command::new("tc")
+            .args(["qdisc", "del", "dev", &interface, "ingress"])
+            .output()
+            .expect(
+                &("ingress qdisc couldn't be freed for the interface".to_string() + &interface),
+            );
+    }
 }
 
 impl Drop for TrafficControl {
@@ -375,20 +433,20 @@ impl Drop for TrafficControl {
     // TODO: also move all the processes out of the cgroups they are in
     // TODO: run this when application terminates to ensure the cleaning up happens in that case
     fn drop(&mut self) {
-        Command::new("tc")
-            .args(["qdisc", "del", "dev", &self.interface, "root"])
-            .output()
-            .expect(
-                &("root qdisc couldn't be freed for the interface".to_string() + &self.interface),
-            );
+        // Command::new("tc")
+        //     .args(["qdisc", "del", "dev", &self.interface, "root"])
+        //     .output()
+        //     .expect(
+        //         &("root qdisc couldn't be freed for the interface".to_string() + &self.interface),
+        //     );
 
-        // Clean the ingress qdisc
-        Command::new("tc")
-            .args(["qdisc", "del", "dev", &self.interface, "ingress"])
-            .output()
-            .expect(
-                &("ingress qdisc couldn't be freed for the interface".to_string()
-                    + &self.interface),
-            );
+        // // Clean the ingress qdisc
+        // Command::new("tc")
+        //     .args(["qdisc", "del", "dev", &self.interface, "ingress"])
+        //     .output()
+        //     .expect(
+        //         &("ingress qdisc couldn't be freed for the interface".to_string()
+        //             + &self.interface),
+        //     );
     }
 }

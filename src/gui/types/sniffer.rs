@@ -3,9 +3,9 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::Duration;
 use std::u32::MAX;
+use std::{panic, process, thread};
 
 use iced::{window, Command};
 use pcap::Device;
@@ -24,6 +24,7 @@ use crate::networking::types::filters::Filters;
 use crate::networking::types::host::Host;
 use crate::networking::types::my_device::MyDevice;
 use crate::networking::types::search_parameters::SearchParameters;
+use crate::networking::types::traffic_control::{IngressThrottleConfig, TrafficControl};
 use crate::notifications::notify_and_log::notify_and_log;
 use crate::notifications::types::notifications::{Notification, Notifications};
 use crate::notifications::types::sound::{play, Sound};
@@ -94,6 +95,8 @@ pub struct Sniffer {
     pub last_focus_time: std::time::Instant,
     /// Bandwidth of the selected interface, which can be used to throttle the interface
     pub interface_bandwidth: String,
+    /// Provides the interface for throttling connections
+    pub traffic_controller: TrafficControl,
 }
 
 impl Sniffer {
@@ -105,6 +108,8 @@ impl Sniffer {
         config_device: &ConfigDevice,
         newer_release_available: Arc<Mutex<Result<bool, String>>>,
     ) -> Self {
+        let traffic_control: TrafficControl =
+            TrafficControl::new(config_device.device_name.to_owned(), None);
         Self {
             current_capture_id,
             info_traffic,
@@ -133,12 +138,15 @@ impl Sniffer {
             selected_connection: 0,
             last_focus_time: std::time::Instant::now(),
             interface_bandwidth: String::new(),
+            traffic_controller: traffic_control,
         }
     }
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::InterfaceBandwidth(bandwidth) => self.interface_bandwidth = bandwidth.trim().to_string(),
+            Message::InterfaceBandwidth(bandwidth) => {
+                self.interface_bandwidth = bandwidth.trim().to_string()
+            }
             Message::UidFilter(uid) => self.filters.uid = uid,
             Message::PidFilter(pid) => self.filters.pid = pid,
             Message::PortFilter(port) => self.filters.port = port,
@@ -332,7 +340,20 @@ impl Sniffer {
     }
 
     fn start(&mut self) {
+        // TODO: Fix handling qdiscs when crashing
+        //
+        // to kill the main thread as soon as a secondary thread panics and clean the qdiscs
+        // information
+        // let orig_hook = panic::take_hook();
+        // panic::set_hook(Box::new(move |panic_info| {
+        //     TrafficControl::clean_traffic_control_settings(self.device.name.clone());
+        //     // invoke the default handler and exit the process
+        //     orig_hook(panic_info);
+        //     process::exit(1);
+        // }));
+        // dbg!(&self.traffic_controller);
         let current_device_name = &*self.device.name.clone();
+        // dbg!(&self.traffic_controller);
         self.set_adapter(current_device_name);
         let device = self.device.clone();
         let (pcap_error, cap) = get_capture_result(&device);
@@ -386,6 +407,14 @@ impl Sniffer {
                     desc: dev.desc,
                     addresses: self.device.addresses.clone(),
                 };
+                let kbps = str::parse::<usize>(&self.interface_bandwidth).ok();
+                let ingress_throttle_config: Option<IngressThrottleConfig> =
+                    kbps.map(|k| IngressThrottleConfig {
+                        kbps: k,
+                        burst_kb: 250,
+                    });
+                self.traffic_controller =
+                    TrafficControl::new(name.to_string(), ingress_throttle_config);
                 break;
             }
         }
@@ -506,6 +535,9 @@ impl Sniffer {
 
     // also called when backspace key is pressed on a running state
     fn reset_button_pressed(&mut self) -> Command<Message> {
+        for device in Device::list().expect("Couldn't get network devices") {
+            TrafficControl::clean_traffic_control_settings(device.name);
+        }
         if self.status_pair.0.lock().unwrap().eq(&Status::Running) {
             return if self.info_traffic.lock().unwrap().all_packets == 0
                 && self.settings_page.is_none()
